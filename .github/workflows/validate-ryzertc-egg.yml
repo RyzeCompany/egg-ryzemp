@@ -179,8 +179,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: RyzeMP-Egg-native-startup-logs
+          name: RyzeMP-Egg-native-startup-logs-${{ github.run_attempt }}
           path: |
             .ci-server/startup.log
             .ci-server/network-startup.log
-          retention-days: 14
+          retention-days: 2
