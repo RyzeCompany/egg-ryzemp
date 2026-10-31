@@ -35,10 +35,10 @@ jobs:
           pathlib.Path('.ci-server/.ci-install.sh').write_text(script)
           pathlib.Path('.ci-server/.ci-start.sh').write_text(start+'\n')
           assert 'RyzeCompany/RyzeRTC/releases/download/' in script
-          assert 'f5fa7e5babc456a9e33a4c8c6c864c1b510841c79eef868fad1e78787d1daa5f' in script
+          assert '9ecea6cc9d239b8c583d042c91df0448432321ceaf128850fe5b27bcde234602' in script
           assert 'RyzeCompany/RyzeMP/releases/download/' in script
-          assert "ryzemp-2225-rtc-tcp-diagnostics.1" in script
-          assert '8ab18233090255100e57fb6418158612113f61a6074a89d469e45b108c988b19' in script
+          assert "ryzemp-2225-ryzertc-integration.1" in script
+          assert '6856b9f88965ceed0ce1052e0b59142ad880c69181c9258ef3c2558931151eba' in script
           assert 'if [[ ! -s /mnt/server/RyzeMP.phar ]]' in script
           assert 'mv -n "$phar_file" /mnt/server/RyzeMP.phar' in script
           assert 'sha256sum -c SHA256SUMS.txt' in script
@@ -64,7 +64,7 @@ jobs:
           test -s .ci-server/.ryzertc-runtime/ryzertc.so
           test -s .ci-server/start-ryzemp.sh
           test -s .ci-server/RyzeMP.phar
-          printf '%s  %s\n' '8ab18233090255100e57fb6418158612113f61a6074a89d469e45b108c988b19' '.ci-server/RyzeMP.phar' | sha256sum -c -
+          printf '%s  %s\n' '6856b9f88965ceed0ce1052e0b59142ad880c69181c9258ef3c2558931151eba' '.ci-server/RyzeMP.phar' | sha256sum -c -
           test -s .ci-server/bin/php7/bin/php.ini
           grep -Fq 'extension="/home/container/.ryzertc-runtime/ryzertc.so"' .ci-server/bin/php7/bin/php.ini
           grep -Fq 'server-port=19132' .ci-server/server.properties
@@ -85,11 +85,14 @@ jobs:
             exit 1
           fi
           grep -q 'RyzeRTC .* cargado' .ci-server/startup.log
-          grep -q 'NetherNet UNAVAILABLE:' .ci-server/startup.log
+          grep -q 'NetherNet READY:' .ci-server/startup.log
           if grep -Eiq 'Fatal error|Uncaught|CRITICAL|EMERGENCY' .ci-server/startup.log; then
             echo 'RyzeMP PHAR reported a fatal startup error' >&2
             exit 1
           fi
+      - name: Verify same TCP and UDP allocation with authenticated HTTP and RakNet
+        shell: bash
+        run: python3 tests/container-network.py
       - name: Test actual RyzeMP PHAR and native runtime in Pterodactyl runtime image
         shell: bash
         run: |
@@ -111,6 +114,7 @@ jobs:
           printf 'preserve\n' | sudo tee .ci-server/worlds/sentinel.dat >/dev/null
           printf 'plugin\n' | sudo tee .ci-server/plugins/sentinel.dat >/dev/null
           before="$(sha256sum .ci-server/RyzeMP.phar | cut -d ' ' -f1)"
+          identity_before="$(sudo sha256sum .ci-server/nethernet/operator-key.pem | cut -d ' ' -f1)"
           docker run --rm --entrypoint /bin/bash \
             -e SERVER_PORT=19132 \
             -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
@@ -120,5 +124,15 @@ jobs:
           test -s .ci-server/RyzeMP.phar
           after="$(sha256sum .ci-server/RyzeMP.phar | cut -d ' ' -f1)"
           test "$before" = "$after"
-          printf '%s  %s\n' '8ab18233090255100e57fb6418158612113f61a6074a89d469e45b108c988b19' '.ci-server/RyzeMP.phar' | sha256sum -c -
+          identity_after="$(sudo sha256sum .ci-server/nethernet/operator-key.pem | cut -d ' ' -f1)"
+          test "$identity_before" = "$identity_after"
+          printf '%s  %s\n' '6856b9f88965ceed0ce1052e0b59142ad880c69181c9258ef3c2558931151eba' '.ci-server/RyzeMP.phar' | sha256sum -c -
           echo 'PHAR, plugins and worlds preserved after reinstall'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RyzeMP-Egg-native-startup-logs
+          path: |
+            .ci-server/startup.log
+            .ci-server/network-startup.log
+          retention-days: 14
