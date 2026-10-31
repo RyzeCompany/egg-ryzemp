@@ -8,13 +8,14 @@ Egg oficial para **RyzeMP**, con PHP 8.4 ZTS y la extension nativa propia **Ryze
 2. Importalo en la pagina **Nests → Import Egg** del panel Pterodactyl.
 3. Asigna al servidor la imagen `ghcr.io/ptero-eggs/yolks:debian` y el puerto habitual de Minecraft.
 4. En el servidor instala/reinstala el Egg. La instalacion descarga el PHP oficial y `RyzeRTC v0.1.0-dev.2` desde GitHub de RyzeCompany, verifica hashes y guarda el runtime en `.ryzertc-runtime/`.
-5. Sube `RyzeMP.phar` a la raiz de archivos y ejecuta el servidor; el script `start-ryzemp.sh` comprueba PHP, OPCache y la carga de `ryzertc.so`.
+5. El instalador descarga automaticamente `RyzeMP.phar` cuando no existe, desde la [prerelease experimental RyzeMP 2225](https://github.com/RyzeCompany/RyzeMP/releases/tag/ryzemp-2225-rtc-staging.1), con SHA-256 fijado. Si ya tienes un PHAR, se conserva sin reemplazarlo. Inicia el servidor: `start-ryzemp.sh` verifica PHP, OPCache y RyzeRTC.
 
-**Actualizacion de Egg existente:** importar una nueva version del JSON no actualiza automaticamente el `start-ryzemp.sh` ya generado; debes reinstalar el Egg para generar el script y obtener la extension. Una reinstalacion preserva `RyzeMP.phar`, `server.properties`, `plugins/` y `worlds/`.
+**Actualizacion de Egg existente:** importar una nueva version del JSON no actualiza automaticamente el `start-ryzemp.sh` ya generado; debes reinstalar el Egg para generar el script y obtener la extension. Una reinstalacion preserva `RyzeMP.phar` si ya existe, `server.properties`, `plugins/` y `worlds/`. Si falta el PHAR, se obtiene de una release oficial con hash conocido.
 
 ## Seguridad y distribucion
 
 - PHP proviene del artefacto oficial PocketMine PHP 8.4 ZTS fijado por SHA-256.
+- El PHAR experimental 2225 se descarga de `RyzeCompany/RyzeMP`, release `ryzemp-2225-rtc-staging.1`, con SHA-256 fijo `3977fdcdd877cd617e445c7d7f99e4ce91f7fd4cd08b62385596191a98b306db`. No contiene la extension nativa; ambas distribuciones son independientes.
 - RyzeRTC proviene de una **prerelease oficial versionada** de [RyzeCompany/RyzeRTC](https://github.com/RyzeCompany/RyzeRTC/releases/tag/v0.1.0-dev.2), no de Amber ni de una descarga efimera de GitHub Actions.
 - La descarga de RyzeRTC requiere SHA-256 fijo `f5fa7e5babc456a9e33a4c8c6c864c1b510841c79eef868fad1e78787d1daa5f`; tambien se verifica `SHA256SUMS.txt` dentro del ZIP y la compatibilidad con PHP 8.4 ZTS.
 - La extension se instala en `.ryzertc-runtime/ryzertc.so`; las bibliotecas compartidas quedan en `.ryzertc-runtime/lib`. El PHAR y los plugins no se modifican.
@@ -28,6 +29,6 @@ Egg oficial para **RyzeMP**, con PHP 8.4 ZTS y la extension nativa propia **Ryze
 
 ## Pruebas de Egg
 
-El workflow [validate-ryzertc-egg.yml](.github/workflows/validate-ryzertc-egg.yml) verifica sintaxis JSON PTDL_v2 y Bash, descarga/verifica la release en el contenedor real de instalacion Pterodactyl y prueba el arranque en su contenedor Debian. Repite la instalacion y comprueba la conservacion de mundos, plugins y PHAR.
+El workflow [validate-ryzertc-egg.yml](.github/workflows/validate-ryzertc-egg.yml) verifica sintaxis JSON PTDL_v2 y Bash; descarga/verifica ambos paquetes en el contenedor real de instalacion de Pterodactyl y valida el PHAR con PHP 8.4 ZTS y RyzeRTC en el contenedor de ejecucion Debian. Repite la instalacion y comprueba la conservacion de mundos, plugins y PHAR.
 
 **Compatibilidad:** el modulo de la prerelease se ha compilado para Linux x86_64, PHP 8.4 ZTS y el ABI previsto; los entornos diferentes requieren su propio binario probado.
