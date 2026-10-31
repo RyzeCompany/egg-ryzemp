@@ -37,8 +37,8 @@ jobs:
           assert 'RyzeCompany/RyzeRTC/releases/download/' in script
           assert '9ecea6cc9d239b8c583d042c91df0448432321ceaf128850fe5b27bcde234602' in script
           assert 'RyzeCompany/RyzeMP/releases/download/' in script
-          assert "ryzemp-2225-ryzertc-integration.1" in script
-          assert '6856b9f88965ceed0ce1052e0b59142ad880c69181c9258ef3c2558931151eba' in script
+          assert "ryzemp-2225-ryzertc-integration.2" in script
+          assert 'a974c34acc36fdf2178cd09424a8c45053cd05872f4f1fac186da8efd2a07b55' in script
           assert 'if [[ ! -s /mnt/server/RyzeMP.phar ]]' in script
           assert 'mv -n "$phar_file" /mnt/server/RyzeMP.phar' in script
           assert 'sha256sum -c SHA256SUMS.txt' in script
@@ -64,7 +64,7 @@ jobs:
           test -s .ci-server/.ryzertc-runtime/ryzertc.so
           test -s .ci-server/start-ryzemp.sh
           test -s .ci-server/RyzeMP.phar
-          printf '%s  %s\n' '6856b9f88965ceed0ce1052e0b59142ad880c69181c9258ef3c2558931151eba' '.ci-server/RyzeMP.phar' | sha256sum -c -
+          printf '%s  %s\n' 'a974c34acc36fdf2178cd09424a8c45053cd05872f4f1fac186da8efd2a07b55' '.ci-server/RyzeMP.phar' | sha256sum -c -
           test -s .ci-server/bin/php7/bin/php.ini
           grep -Fq 'extension="/home/container/.ryzertc-runtime/ryzertc.so"' .ci-server/bin/php7/bin/php.ini
           grep -Fq 'server-port=19132' .ci-server/server.properties
@@ -126,7 +126,7 @@ jobs:
           test "$before" = "$after"
           identity_after="$(sudo sha256sum .ci-server/nethernet/operator-key.pem | cut -d ' ' -f1)"
           test "$identity_before" = "$identity_after"
-          printf '%s  %s\n' '6856b9f88965ceed0ce1052e0b59142ad880c69181c9258ef3c2558931151eba' '.ci-server/RyzeMP.phar' | sha256sum -c -
+          printf '%s  %s\n' 'a974c34acc36fdf2178cd09424a8c45053cd05872f4f1fac186da8efd2a07b55' '.ci-server/RyzeMP.phar' | sha256sum -c -
           echo 'PHAR, plugins and worlds preserved after reinstall'
       - uses: actions/upload-artifact@v4
         if: always()
