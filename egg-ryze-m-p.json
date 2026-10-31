@@ -1,0 +1,31 @@
+{
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-10-30T17:20:49-05:00",
+    "name": "RyzeMP",
+    "author": "clouderidev@proton.me",
+    "description": "RyzeMP privado.",
+    "features": [],
+    "docker_images": {
+        "Debian - PocketMine PHP": "ghcr.io\/ptero-eggs\/yolks:debian"
+    },
+    "file_denylist": [],
+    "startup": "bash .\/start-ryzemp.sh",
+    "config": {
+        "files": "{\r\n    \"server.properties\": {\r\n        \"parser\": \"properties\",\r\n        \"find\": {\r\n            \"server-ip\": \"0.0.0.0\",\r\n            \"server-port\": \"{{server.build.default.port}}\",\r\n            \"query.port\": \"{{server.build.default.port}}\"\r\n        }\r\n    }\r\n}",
+        "startup": "{\r\n    \"done\": \")!\"\r\n}",
+        "logs": "{}",
+        "stop": "stop"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!\/usr\/bin\/env bash\nset -euo pipefail\nexport DEBIAN_FRONTEND=noninteractive\n\nprintf '[RyzeMP] Preparando PocketMine PHP 8.4 para Linux x86_64...\\n'\nif [[ \"$(uname -m)\" != 'x86_64' ]]; then\n  echo '[RyzeMP] Este Egg necesita un nodo Linux x86_64. Para ARM64 se requiere otro PHP.' >&2\n  exit 1\nfi\n\napt-get update -qq\napt-get install -y -qq --no-install-recommends ca-certificates curl tar coreutils\nmkdir -p \/mnt\/server\/tmp \/mnt\/server\/plugins\ncd \/mnt\/server\n\n# PHP oficial del proyecto PocketMine-MP, fijado y validado por SHA-256.\n# El paquete solo contiene PHP y extensiones: el PHAR privado de RyzeMP se sube manualmente.\nphp_url='https:\/\/github.com\/pmmp\/PHP-Binaries\/releases\/download\/pm5-php-8.4-latest\/PHP-8.4-Linux-x86_64-PM5.tar.gz'\nphp_sha256='5b9a1a8f103f7b91670336495b531d9a75c05cca3bd544251a7b63d2124bcc6c'\narchive=\"$(mktemp \/tmp\/ryzemp-php.XXXXXX)\"\ntrap 'rm -f \"$archive\"' EXIT\ncurl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --max-time 180 \"$php_url\" -o \"$archive\"\nprintf '%s  %s\\n' \"$php_sha256\" \"$archive\" | sha256sum -c -\ntar -xzf \"$archive\" -C \/mnt\/server\nif [[ ! -x \/mnt\/server\/bin\/php7\/bin\/php ]]; then\n  echo '[RyzeMP] El paquete PHP no contiene el ejecutable esperado .\/bin\/php7\/bin\/php.' >&2\n  exit 1\nfi\n\n# PocketMine: el tarball conserva la ruta extension_dir de la maquina que compilo PHP.\n# Debemos apuntarla a las extensiones reales del servidor (incluida opcache.so).\nphp_ini='\/mnt\/server\/bin\/php7\/bin\/php.ini'\nif [[ ! -f \"$php_ini\" ]]; then\n  echo '[RyzeMP] La distribucion oficial no contiene bin\/php7\/bin\/php.ini.' >&2\n  exit 1\nfi\nopcache_file=\"$(find \/mnt\/server\/bin\/php7 -type f -name opcache.so -print -quit)\"\nif [[ -z \"$opcache_file\" ]]; then\n  echo '[RyzeMP] No se encuentra opcache.so en el paquete PHP descargado.' >&2\n  exit 1\nfi\next_dir=\"$(dirname \"$opcache_file\")\"\nsed -i '\/^[[:space:]]*extension_dir[[:space:]]*=\/d' \"$php_ini\"\nprintf '\\nextension_dir=\"%s\"\\n' \"$ext_dir\" >> \"$php_ini\"\n\ncat > \/mnt\/server\/start-ryzemp.sh <<'RYZEMP_START'\n#!\/usr\/bin\/env bash\nset -euo pipefail\ncd \/home\/container\n\nif [[ ! -x .\/bin\/php7\/bin\/php ]]; then\n  echo '[RyzeMP] Falta el PHP de PocketMine. Reinstala este Egg.' >&2\n  exit 1\nfi\nif [[ ! -s .\/RyzeMP.phar ]]; then\n  echo '[RyzeMP] Falta RyzeMP.phar.' >&2\n  echo '[RyzeMP] Descarga el artefacto privado desde GitHub Actions, descomprime el ZIP y sube RyzeMP.phar a la raiz del servidor.' >&2\n  exit 1\nfi\n\n# Arreglar tambien instalaciones existentes que recibieron el php.ini con una\n# extension_dir absoluta del entorno de compilacion (GitHub Actions).\nphp_ini='.\/bin\/php7\/bin\/php.ini'\nif [[ ! -f \"$php_ini\" ]]; then\n  echo '[RyzeMP] No se encontro el php.ini de PocketMine PHP.' >&2\n  exit 1\nfi\nopcache_file=\"$(find .\/bin\/php7 -type f -name opcache.so -print -quit)\"\nif [[ -z \"$opcache_file\" ]]; then\n  echo '[RyzeMP] No existe opcache.so en la distribucion PHP. Reinstala el Egg.' >&2\n  exit 1\nfi\next_dir=\"$(cd \"$(dirname \"$opcache_file\")\" && pwd -P)\"\nif ! grep -Fxq \"extension_dir=\\\"$ext_dir\\\"\" \"$php_ini\"; then\n  sed -i '\/^[[:space:]]*extension_dir[[:space:]]*=\/d' \"$php_ini\"\n  printf '\\nextension_dir=\"%s\"\\n' \"$ext_dir\" >> \"$php_ini\"\nfi\n\n# El mismo php.ini sera utilizado por los procesos hijos, incluido ConsoleReader.\nexport PHPRC=\/home\/container\/bin\/php7\/bin\nmkdir -p .\/tmp\nexport TMPDIR=\/home\/container\/tmp\n\n# Comprobar la carga real de OPCache en el contenedor de ejecucion.\nif ! .\/bin\/php7\/bin\/php -r 'if(!extension_loaded(\"Zend OPcache\")){fwrite(STDERR, \"[RyzeMP] Zend OPcache no se cargo. Comprueba php.ini y opcache.so.\\n\"); exit(1);}' ; then\n  echo '[RyzeMP] PHP no puede cargar OPCache. Revisa bin\/php7\/bin\/php.ini.' >&2\n  exit 1\nfi\n\nexec .\/bin\/php7\/bin\/php .\/RyzeMP.phar --no-wizard --enable-ansi --settings.enable-dev-builds=1\nRYZEMP_START\nchmod 755 \/mnt\/server\/start-ryzemp.sh\n\n# No sobrescribir la configuraci\u00f3n ni los datos de una instalaci\u00f3n existente.\nif [[ ! -f \/mnt\/server\/server.properties ]]; then\n  port=\"${SERVER_PORT:-19132}\"\n  [[ \"$port\" =~ ^[0-9]+$ ]] || { echo '[RyzeMP] Puerto inicial inv\u00e1lido' >&2; exit 1; }\n  printf 'server-ip=0.0.0.0\\nserver-port=%s\\n' \"$port\" > \/mnt\/server\/server.properties\nfi\n\nif [[ -s \/mnt\/server\/RyzeMP.phar ]]; then\n  echo '[RyzeMP] PHP instalado. RyzeMP.phar ya estaba presente y se conserva.'\nelse\n  echo '[RyzeMP] PHP instalado. Sube RyzeMP.phar desde el administrador de archivos de Pterodactyl antes de iniciar.'\nfi\n",
+            "container": "ghcr.io\/ptero-eggs\/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": []
+}
