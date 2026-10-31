@@ -36,6 +36,11 @@ jobs:
           pathlib.Path('.ci-server/.ci-start.sh').write_text(start+'\n')
           assert 'RyzeCompany/RyzeRTC/releases/download/' in script
           assert 'f5fa7e5babc456a9e33a4c8c6c864c1b510841c79eef868fad1e78787d1daa5f' in script
+          assert 'RyzeCompany/RyzeMP/releases/download/' in script
+          assert "ryzemp-2225-rtc-staging.1" in script
+          assert '3977fdcdd877cd617e445c7d7f99e4ce91f7fd4cd08b62385596191a98b306db' in script
+          assert 'if [[ ! -s /mnt/server/RyzeMP.phar ]]' in script
+          assert 'mv -n "$phar_file" /mnt/server/RyzeMP.phar' in script
           assert 'sha256sum -c SHA256SUMS.txt' in script
           assert 'ryzertc.so' in script and 'LD_LIBRARY_PATH' in start
           assert 'exec ./bin/php7/bin/php ./RyzeMP.phar' in start
@@ -58,26 +63,45 @@ jobs:
             ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-install.sh
           test -s .ci-server/.ryzertc-runtime/ryzertc.so
           test -s .ci-server/start-ryzemp.sh
+          test -s .ci-server/RyzeMP.phar
+          printf '%s  %s\n' '3977fdcdd877cd617e445c7d7f99e4ce91f7fd4cd08b62385596191a98b306db' '.ci-server/RyzeMP.phar' | sha256sum -c -
           test -s .ci-server/bin/php7/bin/php.ini
           grep -Fq 'extension="/home/container/.ryzertc-runtime/ryzertc.so"' .ci-server/bin/php7/bin/php.ini
           grep -Fq 'server-port=19132' .ci-server/server.properties
-      - name: Test actual RyzeMP runtime image and startup script
+      - name: Test actual RyzeMP PHAR and native runtime in Pterodactyl runtime image
         shell: bash
         run: |
           set -euo pipefail
-          cat > .ci-server/RyzeMP.phar <<'PHP'
-          <?php
-          if (!extension_loaded('ryzertc') || !class_exists('RyzeRTC\\Runtime')) {
-              fwrite(STDERR, "RyzeRTC not inherited by PHAR runtime\n");
-              exit(1);
-          }
-          if (!extension_loaded('Zend OPcache')) exit(2);
-          echo 'RyzeMP egg mock boot passed: '.RyzeRTC\Runtime::version()."\n";
-          PHP
+          docker run --rm --entrypoint /bin/bash \
+            -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
+            -w /home/container ghcr.io/ptero-eggs/yolks:debian -lc '
+              set -euo pipefail
+              export PHPRC=/home/container/bin/php7/bin
+              export LD_LIBRARY_PATH=/home/container/.ryzertc-runtime/lib
+              ./bin/php7/bin/php -r '\''if(!extension_loaded("ryzertc") || !extension_loaded("Zend OPcache")) exit(1);'\''
+              ./bin/php7/bin/php ./RyzeMP.phar --version
+            '
+      - name: Smoke-test actual PHAR start with native RyzeRTC loaded
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
           docker run --rm --entrypoint /bin/bash \
             -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
             -w /home/container ghcr.io/ptero-eggs/yolks:debian \
-            ./start-ryzemp.sh
+            -c 'timeout 25s ./start-ryzemp.sh' > .ci-server/startup.log 2>&1
+          status=$?
+          set -e
+          tail -n 90 .ci-server/startup.log
+          if [[ "$status" != 0 && "$status" != 124 ]]; then
+            echo 'RyzeMP PHAR exited unexpectedly during native startup' >&2
+            exit 1
+          fi
+          grep -q 'RyzeRTC .* cargado' .ci-server/startup.log
+          if grep -Eiq 'Fatal error|Uncaught|CRITICAL|EMERGENCY' .ci-server/startup.log; then
+            echo 'RyzeMP PHAR reported a fatal startup error' >&2
+            exit 1
+          fi
       - name: Ensure server data preservation when reinstalling
         shell: bash
         run: |
@@ -85,6 +109,7 @@ jobs:
           mkdir -p .ci-server/worlds .ci-server/plugins
           printf 'preserve\n' > .ci-server/worlds/sentinel.dat
           printf 'plugin\n' | sudo tee .ci-server/plugins/sentinel.dat >/dev/null
+          before="$(sha256sum .ci-server/RyzeMP.phar | cut -d ' ' -f1)"
           docker run --rm --entrypoint /bin/bash \
             -e SERVER_PORT=19132 \
             -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
@@ -92,7 +117,7 @@ jobs:
           test "$(cat .ci-server/worlds/sentinel.dat)" = preserve
           test "$(cat .ci-server/plugins/sentinel.dat)" = plugin
           test -s .ci-server/RyzeMP.phar
-          docker run --rm --entrypoint /bin/bash \
-            -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
-            -w /home/container ghcr.io/ptero-eggs/yolks:debian \
-            ./start-ryzemp.sh
+          after="$(sha256sum .ci-server/RyzeMP.phar | cut -d ' ' -f1)"
+          test "$before" = "$after"
+          printf '%s  %s\n' '3977fdcdd877cd617e445c7d7f99e4ce91f7fd4cd08b62385596191a98b306db' '.ci-server/RyzeMP.phar' | sha256sum -c -
+          echo 'PHAR, plugins and worlds preserved after reinstall'
