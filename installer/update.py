@@ -20,8 +20,9 @@ MP = 'RyzeCompany/RyzeMP'
 RTC = 'RyzeCompany/RyzeRTC'
 MANIFEST = 'ryzemp-update.json'
 PLATFORM = {'os': 'linux', 'arch': 'x86_64', 'php': '8.4', 'php_api': 20240924, 'zts': True}
-TARGETS = ('bin/php7', '.ryzertc-runtime', 'RyzeMP.phar', 'start-ryzemp.sh', '.ryzemp-install.json')
-BACKUPS = ('php7', 'ryzertc-runtime', 'RyzeMP.phar', 'start-ryzemp.sh', 'install.json')
+# Install the guarded launcher first, including when upgrading from an older egg.
+TARGETS = ('start-ryzemp.sh', 'bin/php7', '.ryzertc-runtime', 'RyzeMP.phar', '.ryzemp-install.json')
+BACKUPS = ('start-ryzemp.sh', 'php7', 'ryzertc-runtime', 'RyzeMP.phar', 'install.json')
 
 
 class UpdateError(Exception):
@@ -298,7 +299,8 @@ def signature(path):
         return None
     if path.is_file():
         return (sha(path), stat.S_IMODE(path.stat().st_mode))
-    return [(str(p.relative_to(path)), ('link', os.readlink(p)) if p.is_symlink() else sha(p))
+    return [(str(p.relative_to(path)), ('link', os.readlink(p)) if p.is_symlink()
+             else (sha(p), stat.S_IMODE(p.stat().st_mode)))
             for p in sorted(path.rglob('*')) if p.is_file() or p.is_symlink()]
 
 
@@ -367,7 +369,7 @@ def update(root, php_dir, startup, channel):
             state['ryzertc'] = native
             state_file = stage / 'state.json'
             write_json(state_file, state)
-            changed = commit(root, (php, runtime, phar, start, state_file))
+            changed = commit(root, (start, php, runtime, phar, state_file))
             if changed:
                 print('[RyzeMP] Actualizacion verificada. Copia anterior: .ryzemp-backups/previous/', flush=True)
             return state

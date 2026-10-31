@@ -272,6 +272,24 @@ class UpdaterTests(unittest.TestCase):
         updater.recover(self.root)
         self.assertEqual(self.snapshot(), before)
 
+    def test_old_launcher_is_guarded_before_replacing_any_binary(self):
+        self.start.write_text((pathlib.Path(__file__).parents[1] / 'installer/start.sh').read_text())
+        original = updater.os.replace
+        inspected = []
+        def replace(source, destination):
+            if pathlib.Path(destination) == self.root / 'bin/php7' and '.ryzemp-stage.' in str(source):
+                self.assertIn('.ryzemp-update-transaction', (self.root / 'start-ryzemp.sh').read_text())
+                self.assertTrue((self.root / '.ryzemp-update-transaction').is_dir())
+                inspected.append(True)
+                raise OSError('interrupted before PHP activation')
+            return original(source, destination)
+        before = self.snapshot()
+        with mock.patch.object(updater.os, 'replace', side_effect=replace):
+            with self.assertRaisesRegex(OSError, 'interrupted'):
+                self.install()
+        self.assertEqual(inspected, [True])
+        self.assertEqual(self.snapshot(), before)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
