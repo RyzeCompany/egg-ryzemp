@@ -4,7 +4,7 @@ import http.client, json, pathlib, socket, struct, subprocess, time
 root = pathlib.Path('.ci-server').resolve()
 name = 'ryzemp-native-network-ci'
 log = open(root / 'network-startup.log', 'w+')
-process = subprocess.Popen(['docker','run','--rm','-i','--name',name,'--entrypoint','/bin/bash',
+process = subprocess.Popen(['docker','run','--rm','-i','--tmpfs','/tmp:rw,exec,nosuid,size=64m','--name',name,'--entrypoint','/bin/bash',
     '-p','127.0.0.1:19132:19132/tcp','-p','127.0.0.1:19132:19132/udp',
     '-v',f'{root}:/home/container','-w','/home/container','ghcr.io/ptero-eggs/yolks:debian',
     './start-ryzemp.sh'], stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT, text=True)

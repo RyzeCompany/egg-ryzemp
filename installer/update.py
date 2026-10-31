@@ -192,13 +192,31 @@ def unpack_runtime(archive, destination):
                     f'Archivo nativo sin SHA-256: {path.name}.')
 
 
-def run_php(php, arguments, runtime=None):
+def require_space(directory, needed, operation):
+    free = shutil.disk_usage(directory).free
+    require(free >= needed,
+            f'Espacio insuficiente para {operation} en {directory}: '
+            f'se necesitan {(needed + 1048575) // 1048576} MiB libres y hay {free // 1048576} MiB. '
+            'Se conserva la instalacion actual.')
+
+
+def run_php(php, arguments, runtime=None, *, temp_root):
     environment = os.environ.copy()
     if runtime:
         environment['LD_LIBRARY_PATH'] = str(runtime / 'lib')
     try:
-        result = subprocess.run([str(php), '-n', *arguments], env=environment,
-                                capture_output=True, text=True, timeout=30)
+        # Wings mounts a small tmpfs at /tmp, even in installer containers.
+        # The PHAR stub expands before --version, so every probe needs disk-backed
+        # private temporary storage and cleanup on success, failure and timeout.
+        with tempfile.TemporaryDirectory(prefix='.ryzemp-php-check.', dir=temp_root) as temporary:
+            environment['TMPDIR'] = temporary
+            result = subprocess.run([str(php), '-n', '-d', f'sys_temp_dir={temporary}', *arguments],
+                                    env=environment, capture_output=True, text=True, timeout=30)
+        output = result.stdout + result.stderr
+        if result.returncode != 0 and any(value in output.lower() for value in
+                ('no space left on device', 'errno=28', 'disk quota exceeded')):
+            raise UpdateError(f'Espacio insuficiente al validar el PHAR en {temp_root}. '
+                              'Libera espacio del volumen del servidor; se conserva la instalacion actual.')
         require(result.returncode == 0, 'PHP rechazo el PHAR o RyzeRTC: ' + (result.stdout + result.stderr)[-2000:])
         return result.stdout
     except (OSError, subprocess.TimeoutExpired) as error:
@@ -218,16 +236,24 @@ def validate(php_dir, phar, runtime, rtc):
         if(PHP_VERSION_ID < 80400 || PHP_VERSION_ID >= 80500 || !PHP_ZTS || PHP_INT_SIZE !== 8 ||
            !extension_loaded("Zend OPcache") || !extension_loaded("ryzertc")) exit(1);
         echo json_encode(["api" => RyzeRTC\\Runtime::apiVersion(), "version" => RyzeRTC\\Runtime::version()]);
-    '''], runtime)
+    '''], runtime, temp_root=phar.parent)
     require(json.loads(output) == {'api': rtc['api'], 'version': rtc['version']}, 'Version/API RyzeRTC incompatible.')
-    run_php(php, ['-r', '''
+    archive_info = run_php(php, ['-r', '''
         try {
             $p = new Phar($argv[1]);
             if($p->count() === 0 || !str_contains($p->getStub(), "<?php") ||
                !isset($p["src/PocketMine.php"]) || !isset($p["vendor/autoload.php"])) exit(1);
+            $tarBytes = 8192;
+            foreach(new RecursiveIteratorIterator($p) as $file){
+                if($file->isFile()) $tarBytes += (int)(ceil($file->getSize() / 512) * 512) + 2048;
+            }
+            echo json_encode(["tar_bytes" => $tarBytes]);
         } catch(Throwable $e) { exit(1); }
-    ''', str(phar)])
-    output = run_php(php, [*options, str(phar), '--version'], runtime)
+    ''', str(phar)], temp_root=phar.parent)
+    # Phar conversion can hold both a temporary stream and its output archive.
+    needed = 2 * json.loads(archive_info)['tar_bytes'] + phar.stat().st_size + 8 * 1024 * 1024
+    require_space(phar.parent, needed, 'descomprimir y comprobar el PHAR')
+    output = run_php(php, [*options, str(phar), '--version'], runtime, temp_root=phar.parent)
     require('RyzeMP ' in output, 'El PHAR no identifica RyzeMP.')
     ini = php_dir / 'bin/php.ini'
     require(ini.is_file(), 'Falta php.ini en el PHP preparado.')
@@ -363,6 +389,8 @@ def update(root, php_dir, startup, channel):
             runtime = stage / 'runtime'
             unpack_runtime(rtc, runtime)
             php = stage / 'php7'
+            php_bytes = sum(p.stat().st_size for p in php_dir.rglob('*') if p.is_file())
+            require_space(stage, php_bytes + 8 * 1024 * 1024, 'preparar PHP')
             shutil.copytree(php_dir, php, symlinks=True)
             validate(php, phar, runtime, native)
             start = stage / 'start-ryzemp.sh'

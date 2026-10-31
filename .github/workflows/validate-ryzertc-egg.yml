@@ -45,7 +45,7 @@ jobs:
           assert 'RYZEMP_CHANNEL:-pruebas' in script
           assert data['variables'][0]['default_value']=='pruebas'
           assert 'ryzertc.so' in script and 'LD_LIBRARY_PATH' in start
-          assert 'exec ./bin/php7/bin/php ./RyzeMP.phar' in start
+          assert 'sys_temp_dir=$TMPDIR' in start and './RyzeMP.phar --no-wizard' in start
           for forbidden in ('nethernet-enabled=', 'nethernet-ice-port=', 'Amber-PM', 'ext-rtc', '19134'):
               assert forbidden not in script, forbidden
           assert 'server-ip=0.0.0.0' in script
@@ -59,10 +59,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --entrypoint /bin/bash \
+          docker run --rm --tmpfs /tmp:rw,exec,nosuid,size=64m --entrypoint /bin/bash \
             -e SERVER_PORT=19132 -e RYZEMP_GITHUB_TOKEN \
             -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
-            ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-install.sh
+            -v "$GITHUB_WORKSPACE:/opt/egg:ro" \
+            ghcr.io/ptero-eggs/installers:debian -lc '
+              set -euo pipefail
+              /mnt/server/.ci-install.sh
+              python3 /opt/egg/tests/limited-tmp.py --root /mnt/server
+            '
+
           test -s .ci-server/.ryzertc-runtime/ryzertc.so
           test -s .ci-server/start-ryzemp.sh
           test -s .ci-server/RyzeMP.phar
@@ -83,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          docker run --rm --entrypoint /bin/bash \
+          docker run --rm --tmpfs /tmp:rw,exec,nosuid,size=64m --entrypoint /bin/bash \
             -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
             -w /home/container ghcr.io/ptero-eggs/yolks:debian \
             -c 'timeout 25s ./start-ryzemp.sh' > .ci-server/startup.log 2>&1
@@ -107,7 +113,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --entrypoint /bin/bash \
+          docker run --rm --tmpfs /tmp:rw,exec,nosuid,size=64m --entrypoint /bin/bash \
             -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
             -w /home/container ghcr.io/ptero-eggs/yolks:debian -lc '
               set -euo pipefail
@@ -130,7 +136,7 @@ jobs:
           sudo cp /tmp/previous-RyzeMP.phar .ci-server/RyzeMP.phar
           properties_before="$(sha256sum .ci-server/server.properties | cut -d ' ' -f1)"
           identity_before="$(sudo sha256sum .ci-server/nethernet/operator-key.pem | cut -d ' ' -f1)"
-          docker run --rm --entrypoint /bin/bash \
+          docker run --rm --tmpfs /tmp:rw,exec,nosuid,size=64m --entrypoint /bin/bash \
             -e SERVER_PORT=19132 -e RYZEMP_GITHUB_TOKEN \
             -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
             ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-install.sh
@@ -151,7 +157,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --entrypoint /bin/bash \
+          docker run --rm --tmpfs /tmp:rw,exec,nosuid,size=64m --entrypoint /bin/bash \
             -e SERVER_PORT=19132 -e RYZEMP_GITHUB_TOKEN \
             -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
             ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-install.sh
@@ -166,7 +172,7 @@ jobs:
             .ci-server/nethernet/operator-key.pem > /tmp/before-update.sha256
           sed 's/5b9a1a8f103f7b91670336495b531d9a75c05cca3bd544251a7b63d2124bcc6c/0000000000000000000000000000000000000000000000000000000000000000/' \
             .ci-server/.ci-install.sh > .ci-server/.ci-bad-install.sh
-          if docker run --rm --entrypoint /bin/bash \
+          if docker run --rm --tmpfs /tmp:rw,exec,nosuid,size=64m --entrypoint /bin/bash \
             -e SERVER_PORT=19132 -e RYZEMP_GITHUB_TOKEN -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
             ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-bad-install.sh; then
             echo 'Corrupt package incorrectly accepted' >&2
@@ -183,4 +189,5 @@ jobs:
           path: |
             .ci-server/startup.log
             .ci-server/network-startup.log
+            .ci-server/limited-tmp-regression.log
           retention-days: 2
