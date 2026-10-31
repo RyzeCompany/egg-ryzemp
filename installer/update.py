@@ -66,6 +66,11 @@ def download(url, destination, limit):
     request = urllib.request.Request(url, headers={
         'User-Agent': 'RyzeMP-Pterodactyl-Updater/1', 'Accept': 'application/vnd.github+json'
         if url.startswith('https://api.github.com/') else 'application/octet-stream'})
+    # Optional in CI; public hosts do not need a token. Never forward it to assets
+    # or redirects, including GitHub's external signed download hosts.
+    api_token = os.environ.get('RYZEMP_GITHUB_TOKEN', '')
+    if api_token and url.startswith('https://api.github.com/repos/RyzeCompany/'):
+        request.add_unredirected_header('Authorization', 'Bearer ' + api_token)
     try:
         opener = urllib.request.build_opener(HTTPSRedirects())
         with opener.open(request, timeout=60) as response, destination.open('wb') as output:

@@ -13,6 +13,8 @@ jobs:
   validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      RYZEMP_GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - name: Test release selection, integrity, upgrades and recovery
@@ -58,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --entrypoint /bin/bash \
-            -e SERVER_PORT=19132 \
+            -e SERVER_PORT=19132 -e RYZEMP_GITHUB_TOKEN \
             -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
             ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-install.sh
           test -s .ci-server/.ryzertc-runtime/ryzertc.so
@@ -129,7 +131,7 @@ jobs:
           properties_before="$(sha256sum .ci-server/server.properties | cut -d ' ' -f1)"
           identity_before="$(sudo sha256sum .ci-server/nethernet/operator-key.pem | cut -d ' ' -f1)"
           docker run --rm --entrypoint /bin/bash \
-            -e SERVER_PORT=19132 \
+            -e SERVER_PORT=19132 -e RYZEMP_GITHUB_TOKEN \
             -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
             ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-install.sh
           test "$(cat .ci-server/worlds/sentinel.dat)" = preserve
@@ -150,7 +152,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --entrypoint /bin/bash \
-            -e SERVER_PORT=19132 \
+            -e SERVER_PORT=19132 -e RYZEMP_GITHUB_TOKEN \
             -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
             ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-install.sh
           sudo cmp /tmp/previous-RyzeMP.phar .ci-server/.ryzemp-backups/previous/RyzeMP.phar
@@ -165,7 +167,7 @@ jobs:
           sed 's/5b9a1a8f103f7b91670336495b531d9a75c05cca3bd544251a7b63d2124bcc6c/0000000000000000000000000000000000000000000000000000000000000000/' \
             .ci-server/.ci-install.sh > .ci-server/.ci-bad-install.sh
           if docker run --rm --entrypoint /bin/bash \
-            -e SERVER_PORT=19132 -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
+            -e SERVER_PORT=19132 -e RYZEMP_GITHUB_TOKEN -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
             ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-bad-install.sh; then
             echo 'Corrupt package incorrectly accepted' >&2
             exit 1

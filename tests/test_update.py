@@ -291,5 +291,30 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
 
 
+class DownloadAuthTests(unittest.TestCase):
+    def download_request(self, url):
+        class Response(io.BytesIO):
+            def geturl(self):
+                return url
+        opener = mock.Mock()
+        opener.open.return_value = Response(b'{}')
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.dict(updater.os.environ, {'RYZEMP_GITHUB_TOKEN': 'synthetic-ci-test'}), \
+                mock.patch.object(updater.urllib.request, 'build_opener', return_value=opener):
+            updater.download(url, pathlib.Path(directory) / 'response', 100)
+        return opener.open.call_args.args[0]
+
+    def test_optional_ci_token_is_only_sent_to_api_and_never_redirected(self):
+        request = self.download_request(f'https://api.github.com/repos/{updater.MP}/releases')
+        self.assertEqual(request.get_header('Authorization'), 'Bearer synthetic-ci-test')
+        redirect = updater.HTTPSRedirects().redirect_request(request, None, 302, 'Found', {},
+                                                           'https://downloads.example.test/file')
+        self.assertFalse(redirect.has_header('Authorization'))
+
+    def test_release_download_never_receives_ci_token(self):
+        request = self.download_request(updater.asset_url(updater.MP, 'test', 'RyzeMP.phar'))
+        self.assertFalse(request.has_header('Authorization'))
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

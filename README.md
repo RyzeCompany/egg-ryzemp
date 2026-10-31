@@ -26,6 +26,8 @@ No se instalan borradores ni releases sin `ryzemp-update.json`. Si la última re
 
 El manifiesto de cada release declara el SHA-256 del PHAR y la versión, API y SHA-256 exactos de RyzeRTC. El egg usa únicamente las releases de `RyzeCompany/RyzeMP` y `RyzeCompany/RyzeRTC` por HTTPS; también verifica el digest del manifiesto publicado por GitHub. No ejecuta scripts descargados: el instalador completo está dentro del JSON importado.
 
+El host público no necesita credenciales. Actions proporciona su token automático a los contenedores de instalación para evitar el límite de consultas anónimas de las IP compartidas. El actualizador solo lo usa para la API oficial; no lo envía a assets ni redirecciones ni lo guarda en el servidor. Si GitHub limita una consulta del host, la instalación se detiene sin sustituir los componentes actuales.
+
 Antes de reemplazar archivos comprueba:
 
 - SHA-256 del PHAR y del ZIP nativo, archivos internos y rutas del ZIP.
