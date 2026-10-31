@@ -14,7 +14,7 @@ Instala PHP 8.4 ZTS y RyzeRTC API 2 en Linux x86_64, compatible con Debian 12 / 
 
 La señalización HTTP usa **TCP** y RakNet/WebRTC usan **UDP**, ambos en el mismo `server-port`, por ejemplo 19132. No se agregan `nethernet-enabled`, `nethernet-ice-port` ni otro puerto público. El mux privado de ICE se administra automáticamente en loopback.
 
-Wings debe publicar la asignación para **TCP y UDP**. En el host del nodo, inspecciona `docker inspect ID_DEL_CONTENEDOR`: `NetworkSettings.Ports` debe incluir `19132/tcp` y `19132/udp` con la misma asignación. Permite ambos protocolos en el firewall. El JSON del egg no puede modificar los mapeos Docker ni el firewall del host.
+Wings publica cada asignación para **TCP y UDP** en su implementación oficial: [Allocations.Bindings](https://github.com/pterodactyl/wings/blob/747bc4393daf5d95fdf61d76382f5e23749cffe9/environment/allocations.go#L53) crea ambos mapeos y el entorno Docker utiliza `a.DockerBindings()`. La CI de este egg también verificó ambos protocolos con el mismo puerto. En el host del nodo, inspecciona `docker inspect ID_DEL_CONTENEDOR`: `NetworkSettings.Ports` debe incluir `19132/tcp` y `19132/udp` con la misma asignación. Permite ambos protocolos en el firewall. El JSON del egg no puede modificar los mapeos Docker ni el firewall del host.
 
 Desde una red externa, `http://IP_O_DOMINIO:PUERTO/v1/join` debe devolver HTTP 200 y `protocol: 2225`. Esa respuesta verifica acceso TCP; todavía hay que probar UDP y el ingreso real del cliente.
 
