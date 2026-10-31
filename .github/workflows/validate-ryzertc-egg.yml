@@ -15,6 +15,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Test release selection, integrity, upgrades and recovery
+        run: |
+          python3 tools/build-egg.py --check
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check Egg JSON, shell syntax and network contract
         shell: bash
         run: |
@@ -28,20 +32,16 @@ jobs:
           assert 'server-ip' in data['config']['files']
           assert 'server-port' in data['config']['files']
           script=data['scripts']['installation']['script']
-          assert script.count("cat > /mnt/server/start-ryzemp.sh <<'RYZEMP_START'")==1
+          assert script.count('cat > "$stage/start-ryzemp.sh" <<\'RYZEMP_START\'')==1
           assert script.count('\nRYZEMP_START\n')==1
-          before, rest=script.split("cat > /mnt/server/start-ryzemp.sh <<'RYZEMP_START'\n",1)
+          before, rest=script.split('cat > "$stage/start-ryzemp.sh" <<\'RYZEMP_START\'\n',1)
           start, after=rest.split('\nRYZEMP_START\n',1)
           pathlib.Path('.ci-server/.ci-install.sh').write_text(script)
           pathlib.Path('.ci-server/.ci-start.sh').write_text(start+'\n')
-          assert 'RyzeCompany/RyzeRTC/releases/download/' in script
-          assert '9ecea6cc9d239b8c583d042c91df0448432321ceaf128850fe5b27bcde234602' in script
-          assert 'RyzeCompany/RyzeMP/releases/download/' in script
-          assert "ryzemp-2225-ryzertc-integration.2" in script
-          assert 'a974c34acc36fdf2178cd09424a8c45053cd05872f4f1fac186da8efd2a07b55' in script
-          assert 'if [[ ! -s /mnt/server/RyzeMP.phar ]]' in script
-          assert 'mv -n "$phar_file" /mnt/server/RyzeMP.phar' in script
-          assert 'sha256sum -c SHA256SUMS.txt' in script
+          assert "MP = 'RyzeCompany/RyzeMP'" in script and "RTC = 'RyzeCompany/RyzeRTC'" in script
+          assert "MANIFEST = 'ryzemp-update.json'" in script
+          assert 'RYZEMP_CHANNEL:-pruebas' in script
+          assert data['variables'][0]['default_value']=='pruebas'
           assert 'ryzertc.so' in script and 'LD_LIBRARY_PATH' in start
           assert 'exec ./bin/php7/bin/php ./RyzeMP.phar' in start
           for forbidden in ('nethernet-enabled=', 'nethernet-ice-port=', 'Amber-PM', 'ext-rtc', '19134'):
@@ -49,7 +49,7 @@ jobs:
           assert 'server-ip=0.0.0.0' in script
           assert 'server-port=%s' in script
           assert data['docker_images']['Debian - PocketMine PHP']=='ghcr.io/ptero-eggs/yolks:debian'
-          print('PTDL v2, RyzeRTC pinned digest, shared IP/port, native loader: OK')
+          print('PTDL v2, release manifest, pruebas default, shared IP/port, native loader: OK')
           PY
           bash -n .ci-server/.ci-install.sh
           bash -n .ci-server/.ci-start.sh
@@ -64,10 +64,18 @@ jobs:
           test -s .ci-server/.ryzertc-runtime/ryzertc.so
           test -s .ci-server/start-ryzemp.sh
           test -s .ci-server/RyzeMP.phar
-          printf '%s  %s\n' 'a974c34acc36fdf2178cd09424a8c45053cd05872f4f1fac186da8efd2a07b55' '.ci-server/RyzeMP.phar' | sha256sum -c -
           test -s .ci-server/bin/php7/bin/php.ini
           grep -Fq 'extension="/home/container/.ryzertc-runtime/ryzertc.so"' .ci-server/bin/php7/bin/php.ini
           grep -Fq 'server-port=19132' .ci-server/server.properties
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          state=json.loads(pathlib.Path('.ci-server/.ryzemp-install.json').read_text())
+          assert state['channel']=='pruebas'
+          assert state['ryzertc']['api']>=2
+          assert hashlib.sha256(pathlib.Path('.ci-server/RyzeMP.phar').read_bytes()).hexdigest()==state['phar']['sha256']
+          PY
+      - name: Exercise real PHAR rejection and native API mismatch before replacement
+        run: sudo python3 tests/native-preflight.py --root .ci-server
       - name: Smoke-test actual PHAR start with native RyzeRTC loaded
         shell: bash
         run: |
@@ -106,14 +114,19 @@ jobs:
               ./bin/php7/bin/php -r '\''if(!extension_loaded("ryzertc") || !extension_loaded("Zend OPcache")) exit(1);'\''
               ./bin/php7/bin/php ./RyzeMP.phar --version
             '
-      - name: Ensure server data preservation when reinstalling
+      - name: Upgrade an existing older official PHAR and preserve all server data
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p .ci-server/worlds .ci-server/plugins
           printf 'preserve\n' | sudo tee .ci-server/worlds/sentinel.dat >/dev/null
           printf 'plugin\n' | sudo tee .ci-server/plugins/sentinel.dat >/dev/null
-          before="$(sha256sum .ci-server/RyzeMP.phar | cut -d ' ' -f1)"
+          curl -fsSL --retry 3 \
+            https://github.com/RyzeCompany/RyzeMP/releases/download/ryzemp-2225-ryzertc-integration.1/RyzeMP-2225-RyzeRTC-STAGING.phar \
+            -o /tmp/previous-RyzeMP.phar
+          printf '%s  %s\n' '6856b9f88965ceed0ce1052e0b59142ad880c69181c9258ef3c2558931151eba' /tmp/previous-RyzeMP.phar | sha256sum -c -
+          sudo cp /tmp/previous-RyzeMP.phar .ci-server/RyzeMP.phar
+          properties_before="$(sha256sum .ci-server/server.properties | cut -d ' ' -f1)"
           identity_before="$(sudo sha256sum .ci-server/nethernet/operator-key.pem | cut -d ' ' -f1)"
           docker run --rm --entrypoint /bin/bash \
             -e SERVER_PORT=19132 \
@@ -122,12 +135,45 @@ jobs:
           test "$(cat .ci-server/worlds/sentinel.dat)" = preserve
           test "$(cat .ci-server/plugins/sentinel.dat)" = plugin
           test -s .ci-server/RyzeMP.phar
-          after="$(sha256sum .ci-server/RyzeMP.phar | cut -d ' ' -f1)"
-          test "$before" = "$after"
+          test "$(sha256sum .ci-server/server.properties | cut -d ' ' -f1)" = "$properties_before"
+          sudo cmp /tmp/previous-RyzeMP.phar .ci-server/.ryzemp-backups/previous/RyzeMP.phar
           identity_after="$(sudo sha256sum .ci-server/nethernet/operator-key.pem | cut -d ' ' -f1)"
           test "$identity_before" = "$identity_after"
-          printf '%s  %s\n' 'a974c34acc36fdf2178cd09424a8c45053cd05872f4f1fac186da8efd2a07b55' '.ci-server/RyzeMP.phar' | sha256sum -c -
-          echo 'PHAR, plugins and worlds preserved after reinstall'
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          state=json.loads(pathlib.Path('.ci-server/.ryzemp-install.json').read_text())
+          assert hashlib.sha256(pathlib.Path('.ci-server/RyzeMP.phar').read_bytes()).hexdigest()==state['phar']['sha256']
+          PY
+          echo 'Old PHAR upgraded; prior PHAR backed up; worlds, plugins, properties and operator key preserved'
+      - name: Repeat reinstall without replacing the last useful backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /bin/bash \
+            -e SERVER_PORT=19132 \
+            -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
+            ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-install.sh
+          sudo cmp /tmp/previous-RyzeMP.phar .ci-server/.ryzemp-backups/previous/RyzeMP.phar
+      - name: Reject a corrupt PHP package without changing the working installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo sha256sum .ci-server/RyzeMP.phar .ci-server/bin/php7/bin/php \
+            .ci-server/bin/php7/bin/php.ini .ci-server/.ryzertc-runtime/ryzertc.so \
+            .ci-server/start-ryzemp.sh .ci-server/.ryzemp-install.json \
+            .ci-server/nethernet/operator-key.pem > /tmp/before-update.sha256
+          sed 's/5b9a1a8f103f7b91670336495b531d9a75c05cca3bd544251a7b63d2124bcc6c/0000000000000000000000000000000000000000000000000000000000000000/' \
+            .ci-server/.ci-install.sh > .ci-server/.ci-bad-install.sh
+          if docker run --rm --entrypoint /bin/bash \
+            -e SERVER_PORT=19132 -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
+            ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-bad-install.sh; then
+            echo 'Corrupt package incorrectly accepted' >&2
+            exit 1
+          fi
+          sudo sha256sum -c /tmp/before-update.sha256
+          sudo cmp /tmp/previous-RyzeMP.phar .ci-server/.ryzemp-backups/previous/RyzeMP.phar
+      - name: Verify updated installation still serves TCP and UDP
+        run: python3 tests/container-network.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

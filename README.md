@@ -1,46 +1,70 @@
 # RyzeMP · Egg de Pterodactyl con RyzeRTC
 
-Instala PHP 8.4 ZTS y RyzeRTC API 2 en Linux x86_64, compatible con Debian 12 / glibc 2.36. El módulo nativo y sus bibliotecas quedan en `.ryzertc-runtime/`, **fuera de `RyzeMP.phar`**.
+**Reinstalar actualiza RyzeMP desde las releases oficiales**, verifica los archivos y conserva mundos, plugins, configuración y la identidad NetherNet. PHP y RyzeRTC se preparan antes de sustituir la instalación. El módulo nativo y sus bibliotecas permanecen fuera de `RyzeMP.phar`.
 
-## Instalar o actualizar
+## Actualizar el egg del panel una vez
 
-1. Importa [egg-ryze-m-p.json de la rama de pruebas](https://raw.githubusercontent.com/RyzeCompany/egg-ryzemp/feature/ryzertc-native-egg/egg-ryze-m-p.json) en **Nests → Import Egg**.
-2. Conserva la imagen `ghcr.io/ptero-eggs/yolks:debian`, la asignación habitual y los valores existentes de `server-ip` y `server-port`.
-3. Respalda el servidor y reinstala el egg para obtener RyzeRTC y regenerar `start-ryzemp.sh`. La reinstalación conserva `server.properties`, mundos, plugins, identidad del operador y cualquier PHAR existente.
-4. Si ya existe `RyzeMP.phar`, **reemplázalo manualmente por el PHAR nuevo** de la [release de integración autenticada](https://github.com/RyzeCompany/RyzeMP/releases/tag/ryzemp-2225-ryzertc-integration.2). El instalador descarga ese PHAR únicamente cuando falta.
-5. Inicia y espera `NetherNet READY`. El arranque verifica PHP, OPCache, bibliotecas, carga del módulo y API 2; RyzeMP obtiene las claves oficiales de Minecraft en segundo plano.
+1. Descarga [egg-ryze-m-p.json](https://raw.githubusercontent.com/RyzeCompany/egg-ryzemp/feature/ryzertc-native-egg/egg-ryze-m-p.json).
+2. En el panel de administración, abre **Nests → tu Nest → RyzeMP**. En **Egg File**, selecciona el JSON y pulsa **Update Egg**. No necesitas crear otro servidor.
+3. Conserva la imagen `ghcr.io/ptero-eggs/yolks:debian`, la asignación habitual y los valores de `server-ip` y `server-port`.
+4. Deja **Canal de actualizaciones** (`RYZEMP_CHANNEL`) en `pruebas`.
+5. Pulsa **Reinstalar** en el servidor. Esta vez reemplazará el PHAR anterior por la última prerelease preparada y cargará el RyzeRTC que esa versión necesita.
+6. Inicia el servidor y comprueba la versión instalada y `NetherNet READY`.
+
+Las siguientes actualizaciones solo requieren publicar una release preparada y pulsar **Reinstalar**. Un reinicio normal conserva la versión instalada. Composer no interviene en este proceso.
+
+## Canales
+
+| Valor | Selección |
+|---|---|
+| `pruebas` — predeterminado | Última prerelease publicada con manifiesto de actualización. Es el canal actual de Bedrock 1.26.60. |
+| `estable` | Última release no marcada como prerelease con manifiesto. Todavía no hay una preparada; seleccionarlo detiene la instalación con un mensaje útil. |
+
+No se instalan borradores ni releases sin `ryzemp-update.json`. Si la última release preparada está dañada o es incompatible, el instalador informa del fallo y conserva la instalación; no elige silenciosamente otra versión. Dentro del mismo canal se rechazan bajadas automáticas y cambios del manifiesto de una versión ya instalada. Cambiar de canal es una selección explícita del administrador.
+
+## Integridad y versiones compatibles
+
+El manifiesto de cada release declara el SHA-256 del PHAR y la versión, API y SHA-256 exactos de RyzeRTC. El egg usa únicamente las releases de `RyzeCompany/RyzeMP` y `RyzeCompany/RyzeRTC` por HTTPS; también verifica el digest del manifiesto publicado por GitHub. No ejecuta scripts descargados: el instalador completo está dentro del JSON importado.
+
+Antes de reemplazar archivos comprueba:
+
+- SHA-256 del PHAR y del ZIP nativo, archivos internos y rutas del ZIP.
+- PHP 8.4 ZTS Linux x86_64, OPCache y ABI nativa 20240924; compatible con Debian 12 / glibc 2.36.
+- Carga real de la API y versión de RyzeRTC requeridas.
+- PHAR válido y ejecución real de `RyzeMP.phar --version`.
+
+La primera release preparada es [ryzemp-2225-ryzertc-integration.2](https://github.com/RyzeCompany/RyzeMP/releases/tag/ryzemp-2225-ryzertc-integration.2), con PHAR `a974c34acc36fdf2178cd09424a8c45053cd05872f4f1fac186da8efd2a07b55` y [RyzeRTC v0.1.0-dev.3 / API 2](https://github.com/RyzeCompany/RyzeRTC/releases/tag/v0.1.0-dev.3), ZIP `9ecea6cc9d239b8c583d042c91df0448432321ceaf128850fe5b27bcde234602`. Las siguientes versiones se resuelven desde su manifiesto; no hace falta volver a importar el egg para cada release compatible.
+
+Un nuevo formato de manifiesto o cambio de ABI de PHP requiere actualizar el egg del panel. PHP se obtiene del proveedor oficial PocketMine con SHA-256 fijado; si el proveedor cambia el archivo sin conservar el hash, la instalación se detiene antes de sustituir archivos.
+
+## Copia anterior y recuperación
+
+La instalación guarda PHP, RyzeRTC, PHAR, lanzador y registro de versión anteriores en `.ryzemp-backups/previous/` con los nombres `php7`, `ryzertc-runtime`, `RyzeMP.phar`, `start-ryzemp.sh` e `install.json`. Una reinstalación idéntica conserva esa copia útil. Este respaldo cubre los componentes del software; los datos del servidor permanecen en su sitio.
+
+Un error al sustituir un componente restaura el conjunto anterior. Si el proceso se interrumpe, `start-ryzemp.sh` impide arrancar una instalación incompleta y la siguiente reinstalación recupera el diario `.ryzemp-update-transaction`. No borres ese directorio mientras haya una recuperación pendiente.
+
+El instalador conserva `server.properties`, mundos, plugins y `nethernet/operator-key.pem`. Esa clave P-384 mantiene sus permisos 0600 y la confianza del cliente. La reinstalación no la genera ni la sustituye.
 
 ## Una sola asignación pública
 
-La señalización HTTP usa **TCP** y RakNet/WebRTC usan **UDP**, ambos en el mismo `server-port`, por ejemplo 19132. No se agregan `nethernet-enabled`, `nethernet-ice-port` ni otro puerto público. El mux privado de ICE se administra automáticamente en loopback.
+La señalización HTTP usa **TCP** y RakNet/WebRTC usan **UDP**, ambos en el mismo `server-port`, por ejemplo 19132. No se agrega un puerto público ni configuración adicional de NetherNet. El mux privado de ICE se administra automáticamente en loopback.
 
-Wings publica cada asignación para **TCP y UDP** en su implementación oficial: [Allocations.Bindings](https://github.com/pterodactyl/wings/blob/747bc4393daf5d95fdf61d76382f5e23749cffe9/environment/allocations.go#L53) crea ambos mapeos y el entorno Docker utiliza `a.DockerBindings()`. La CI de este egg también verificó ambos protocolos con el mismo puerto. En el host del nodo, inspecciona `docker inspect ID_DEL_CONTENEDOR`: `NetworkSettings.Ports` debe incluir `19132/tcp` y `19132/udp` con la misma asignación. Permite ambos protocolos en el firewall. El JSON del egg no puede modificar los mapeos Docker ni el firewall del host.
+Wings publica cada asignación para [TCP y UDP](https://github.com/pterodactyl/wings/blob/747bc4393daf5d95fdf61d76382f5e23749cffe9/environment/allocations.go#L53). En el nodo, `docker inspect ID_DEL_CONTENEDOR` debe mostrar ambos mapeos con la misma asignación. El firewall del nodo debe permitir los dos protocolos.
 
-Desde una red externa, `http://IP_O_DOMINIO:PUERTO/v1/join` debe devolver HTTP 200 y `protocol: 2225`. Esa respuesta verifica acceso TCP; todavía hay que probar UDP y el ingreso real del cliente.
+Desde una red externa, `http://IP_O_DOMINIO:PUERTO/v1/join` debe devolver HTTP 200 y protocolo 2225. Una oferta sin identidad válida se rechaza con HTTP 401. La autenticación oficial permanece activa.
 
-## Versiones e integridad
+## Desarrollo y pruebas
 
-| Componente | Release | SHA-256 del archivo descargado |
-|---|---|---|
-| RyzeRTC API 2 | [v0.1.0-dev.3](https://github.com/RyzeCompany/RyzeRTC/releases/tag/v0.1.0-dev.3) | `9ecea6cc9d239b8c583d042c91df0448432321ceaf128850fe5b27bcde234602` |
-| RyzeMP 2225 | [ryzemp-2225-ryzertc-integration.2](https://github.com/RyzeCompany/RyzeMP/releases/tag/ryzemp-2225-ryzertc-integration.2) | `a974c34acc36fdf2178cd09424a8c45053cd05872f4f1fac186da8efd2a07b55` |
+Modifica `installer/install.sh.in`, `installer/update.py` o `installer/start.sh` y regenera el JSON con:
 
-El instalador verifica el SHA-256 del ZIP nativo y su manifiesto interno, PHP 8.4 ZTS x86_64 y la carga real de la API. El PHAR se verifica por hash y con PHP `Phar`. Las descargas proceden de releases oficiales propias, no de artefactos temporales. No se utiliza Amber ni se modifica HardCoreFactions.
+```sh
+python3 tools/build-egg.py
+python3 tools/build-egg.py --check
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
 
-El operador conserva su clave P-384 en `nethernet/operator-key.pem` con permisos 0600. Incluye ese archivo en tus respaldos: cambiarlo restablece la confianza TOFU del cliente. El instalador no lo borra ni lo reemplaza.
+El [workflow](.github/workflows/validate-ryzertc-egg.yml) comprueba selección de canales, errores, corrupción, conservación de datos, recuperación y reinstalación sin cambios. Además instala las releases en imágenes reales de Pterodactyl, prueba el PHAR y módulo nativo reales, rechaza una API/PHAR inválidos, actualiza un PHAR oficial anterior, conserva datos y copia anterior, rechaza un paquete PHP corrupto y vuelve a comprobar HTTP/RakNet sobre la misma asignación TCP/UDP.
 
-## Integración y pruebas
+[Publicación de releases preparadas](https://github.com/RyzeCompany/RyzeMP/blob/feature/bedrock-1.26.60-nethernet/docs/EGG_UPDATES.md): el workflow de RyzeMP publica PHAR y checksum primero y `ryzemp-update.json` al final. Cada nueva versión debe llevar un tag nuevo.
 
-RyzeMP sustituye el receptor de diagnóstico por metadata GET, validación de JWT oficial y huellas DTLS, respuestas SDP firmadas, ICE/DTLS/SCTP y sesiones Minecraft mediante DataChannels. La autenticación está activa: una oferta sin identidad válida se rechaza con HTTP 401.
-
-El [workflow del egg](.github/workflows/validate-ryzertc-egg.yml) instala las releases en imágenes reales de instalación y ejecución de Pterodactyl, arranca el PHAR, publica y prueba TCP y UDP con el mismo número, verifica metadata y rechazo de ofertas sin firma, recibe un pong RakNet y comprueba cierre y preservación de PHAR, plugins, mundos y clave del operador al reinstalar.
-
-Los [tests de RyzeMP](https://github.com/RyzeCompany/RyzeMP/actions/workflows/ci-2225-phar-preview.yml) también realizan negociación nativa autenticada con identidades sintéticas, transmisión binaria, fragmentación, concurrencia y reconexiones. Consulta el [detalle técnico](https://github.com/RyzeCompany/RyzeMP/blob/feature/bedrock-1.26.60-nethernet/docs/BEDROCK_1_26_60_NETHERNET.md).
-
-**Pendiente obligatorio:** probar en el host Wings real con Minecraft Bedrock 1.26.60: login, mundo, movimiento, interacción, inventario, paquetes de recursos, desconexión, reconexión y coexistencia con un cliente RakNet. No se declara Terracotta solucionado hasta completar esa prueba. Las PR permanecen abiertas, sin fusionar a main.
-
-## Corrección de entrada al mundo
-
-La release `ryzertc-integration.2` corrige el `AssumptionFailedError` reproducido al enviar `minecraft:chorus_plant` en el inventario creativo después del login. Conserva las 64 variantes de conexión del bloque y completa la ruta de etiquetas de ítems 2225. La [prueba del PHAR real](https://github.com/RyzeCompany/RyzeMP/actions/runs/41158537688) incluye pre-spawn, inventario, recetas, terreno, aparición en el mundo y desconexión con una sesión sintética. El ingreso y juego del cliente real requieren repetir la prueba del operador.
-
-Esta corrección mantiene RyzeRTC v0.1.0-dev.3. En un servidor que ya lo carga, reemplaza `RyzeMP.phar` con la nueva descarga y reinicia. Reinstalar el egg conserva el PHAR existente.
+El operador ya confirmó entrada real al mundo con integración.2. La actualización mediante **Reinstalar** todavía debe repetirse en su panel real. Quedan las pruebas completas de movimiento, interacción, inventario, paquetes de recursos, desconexión/reconexión y coexistencia RakNet. Las PR siguen abiertas sin fusionar a main. Sin Amber; HardCoreFactions no se modifica.
