@@ -64,4 +64,4 @@ if ! ./bin/php7/bin/php -r '
   exit 1
 fi
 echo '[RyzeMP] Red: publica TCP y UDP en la misma asignacion server-port. El Egg no abre el firewall de Wings.'
-exec ./bin/php7/bin/php ./RyzeMP.phar --no-wizard --enable-ansi --settings.enable-dev-builds=1
+exec ./bin/php7/bin/php -d "sys_temp_dir=$TMPDIR" ./RyzeMP.phar --no-wizard --enable-ansi --settings.enable-dev-builds=1

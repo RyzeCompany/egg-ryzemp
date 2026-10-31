@@ -41,6 +41,16 @@ La primera release preparada es [ryzemp-2225-ryzertc-integration.2](https://gith
 
 Un nuevo formato de manifiesto o cambio de ABI de PHP requiere actualizar el egg del panel. PHP se obtiene del proveedor oficial PocketMine con SHA-256 fijado; si el proveedor cambia el archivo sin conservar el hash, la instalación se detiene antes de sustituir archivos.
 
+## Temporales y espacio de instalación
+
+Wings limita `/tmp` mediante un tmpfs independiente (100 MiB por defecto). Aunque el PHAR ocupa unos 7 MiB comprimido, su caché descomprimida y los archivos temporales de conversión necesitan mucho más espacio. La validación de `--version` también ejecuta esa conversión.
+
+El instalador ahora usa una caché privada dentro de su directorio de preparación en `/mnt/server`, fija tanto `TMPDIR` como `sys_temp_dir` y la elimina después de cada comprobación, incluso al fallar o agotar el tiempo. El lanzador fija también `sys_temp_dir` al `tmp/` del servidor. No es necesario aumentar el tmpfs de Wings para esta validación.
+
+Antes de copiar PHP y expandir el PHAR se comprueba el espacio disponible en el volumen. Si ese volumen está lleno, se informa de los MiB necesarios y disponibles y se conserva la instalación anterior. Las cuotas del nodo todavía pueden impedir escribir aunque el sistema informe de espacio libre.
+
+Si la reinstalación anterior terminó con `Phar::convertToData(): No space left on device`, actualiza el egg existente con el JSON nuevo y repite **Reinstalar**. Se utiliza el mismo PHAR oficial beta.4 y RyzeRTC; mundos, plugins, configuración e identidad permanecen en su sitio.
+
 ## Copia anterior y recuperación
 
 La instalación guarda PHP, RyzeRTC, PHAR, lanzador y registro de versión anteriores en `.ryzemp-backups/previous/` con los nombres `php7`, `ryzertc-runtime`, `RyzeMP.phar`, `start-ryzemp.sh` e `install.json`. Una reinstalación idéntica conserva esa copia útil. Este respaldo cubre los componentes del software; los datos del servidor permanecen en su sitio.
@@ -67,7 +77,7 @@ python3 tools/build-egg.py --check
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-El [workflow](.github/workflows/validate-ryzertc-egg.yml) comprueba selección de canales, errores, corrupción, conservación de datos, recuperación y reinstalación sin cambios. Además instala las releases en imágenes reales de Pterodactyl, prueba el PHAR y módulo nativo reales, rechaza una API/PHAR inválidos, actualiza un PHAR oficial anterior, conserva datos y copia anterior, rechaza un paquete PHP corrupto y vuelve a comprobar HTTP/RakNet sobre la misma asignación TCP/UDP.
+El [workflow](.github/workflows/validate-ryzertc-egg.yml) comprueba selección de canales, errores, corrupción, conservación de datos, recuperación y reinstalación sin cambios. Además limita `/tmp` a 64 MiB en las imágenes de instalación y ejecución, reproduce el fallo original con el PHAR real, verifica dos validaciones sin fugas de caché e instala las releases en imágenes reales de Pterodactyl, prueba el PHAR y módulo nativo reales, rechaza una API/PHAR inválidos, actualiza un PHAR oficial anterior, conserva datos y copia anterior, rechaza un paquete PHP corrupto y vuelve a comprobar HTTP/RakNet sobre la misma asignación TCP/UDP.
 
 [Publicación de releases preparadas](https://github.com/RyzeCompany/RyzeMP/blob/main/docs/EGG_UPDATES.md): el workflow de RyzeMP publica PHAR y checksum primero y `ryzemp-update.json` al final. Cada nueva versión debe llevar un tag nuevo.
 

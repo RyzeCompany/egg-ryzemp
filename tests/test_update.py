@@ -290,6 +290,50 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(inspected, [True])
         self.assertEqual(self.snapshot(), before)
 
+    def test_insufficient_server_disk_preserves_active_files_and_previous_backup(self):
+        self.install()
+        self.release('newer', 29)
+        before = self.snapshot()
+        with mock.patch.object(updater.shutil, 'disk_usage', return_value=mock.Mock(free=0)):
+            with self.assertRaisesRegex(updater.UpdateError, 'Espacio insuficiente para preparar PHP'):
+                self.install()
+        self.assertEqual(self.snapshot(), before)
+
+
+class PHPTempTests(unittest.TestCase):
+    def check(self, effect=None):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            observed = []
+            def execute(command, **kwargs):
+                cache = pathlib.Path(kwargs['env']['TMPDIR'])
+                self.assertEqual(cache.parent, root)
+                self.assertTrue(cache.is_dir())
+                self.assertIn(f'sys_temp_dir={cache}', command)
+                observed.append(cache)
+                (cache / 'partial-cache.tar').write_bytes(b'partial')
+                if isinstance(effect, Exception):
+                    raise effect
+                return effect or mock.Mock(returncode=0, stdout='OK', stderr='')
+            with mock.patch.object(updater.subprocess, 'run', side_effect=execute):
+                try:
+                    return updater.run_php(pathlib.Path('/fake/php'), ['--version'], temp_root=root)
+                finally:
+                    self.assertEqual(len(observed), 1)
+                    self.assertFalse(observed[0].exists())
+                    self.assertEqual(list(root.iterdir()), [])
+
+    def test_private_server_volume_cache_is_removed_after_success(self):
+        self.assertEqual(self.check(), 'OK')
+
+    def test_partial_cache_is_removed_after_php_disk_failure(self):
+        with self.assertRaisesRegex(updater.UpdateError, 'Espacio insuficiente al validar el PHAR'):
+            self.check(mock.Mock(returncode=255, stdout='', stderr='errno=28 No space left on device'))
+
+    def test_partial_cache_is_removed_after_timeout(self):
+        with self.assertRaisesRegex(updater.UpdateError, 'No se pudo ejecutar'):
+            self.check(updater.subprocess.TimeoutExpired('php', 30))
+
 
 class DownloadAuthTests(unittest.TestCase):
     def download_request(self, url):
