@@ -65,7 +65,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/opt/egg:ro" \
             ghcr.io/ptero-eggs/installers:debian -lc '
               set -euo pipefail
-              /mnt/server/.ci-install.sh
+              bash /mnt/server/.ci-install.sh
               python3 /opt/egg/tests/limited-tmp.py --root /mnt/server
             '
 
