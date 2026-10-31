@@ -85,6 +85,7 @@ jobs:
             exit 1
           fi
           grep -q 'RyzeRTC .* cargado' .ci-server/startup.log
+          grep -q 'NetherNet UNAVAILABLE:' .ci-server/startup.log
           if grep -Eiq 'Fatal error|Uncaught|CRITICAL|EMERGENCY' .ci-server/startup.log; then
             echo 'RyzeMP PHAR reported a fatal startup error' >&2
             exit 1
@@ -107,7 +108,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .ci-server/worlds .ci-server/plugins
-          printf 'preserve\n' > .ci-server/worlds/sentinel.dat
+          printf 'preserve\n' | sudo tee .ci-server/worlds/sentinel.dat >/dev/null
           printf 'plugin\n' | sudo tee .ci-server/plugins/sentinel.dat >/dev/null
           before="$(sha256sum .ci-server/RyzeMP.phar | cut -d ' ' -f1)"
           docker run --rm --entrypoint /bin/bash \
