@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+if [[ "$(uname -m)" != x86_64 ]]; then
+  echo '[RyzeMP] Se requiere un nodo Linux x86_64.' >&2
+  exit 1
+fi
+case "${RYZEMP_CHANNEL:-pruebas}" in
+  pruebas|estable) ;;
+  *) echo '[RyzeMP] RYZEMP_CHANNEL debe ser pruebas o estable.' >&2; exit 1 ;;
+esac
+apt-get update -qq
+apt-get install -y -qq --no-install-recommends ca-certificates curl tar coreutils python3
+mkdir -p /mnt/server/tmp /mnt/server/plugins
+cd /mnt/server
+stage="$(mktemp -d /mnt/server/.ryzemp-bootstrap.XXXXXX)"
+trap 'rm -rf -- "$stage"' EXIT
+
+# Preparar PHP sin modificar el PHP, PHAR o RyzeRTC de la instalacion actual.
+php_url='https://github.com/pmmp/PHP-Binaries/releases/download/pm5-php-8.4-latest/PHP-8.4-Linux-x86_64-PM5.tar.gz'
+php_sha256='5b9a1a8f103f7b91670336495b531d9a75c05cca3bd544251a7b63d2124bcc6c'
+echo '[RyzeMP] Preparando PHP 8.4 ZTS verificado...'
+curl --fail --location --proto '=https' --proto-redir '=https' --silent --show-error \
+  --retry 3 --connect-timeout 15 --max-time 240 "$php_url" -o "$stage/php.tar.gz"
+printf '%s  %s\n' "$php_sha256" "$stage/php.tar.gz" | sha256sum -c -
+mkdir "$stage/php"
+tar -xzf "$stage/php.tar.gz" -C "$stage/php"
+test -x "$stage/php/bin/php7/bin/php" || { echo '[RyzeMP] PHP incompleto.' >&2; exit 1; }
+cat > "$stage/update.py" <<'RYZEMP_UPDATER'
+@@UPDATER@@
+RYZEMP_UPDATER
+cat > "$stage/start-ryzemp.sh" <<'RYZEMP_START'
+@@START@@
+RYZEMP_START
+chmod 755 "$stage/start-ryzemp.sh"
+python3 "$stage/update.py" --root /mnt/server --php-dir "$stage/php/bin/php7" \
+  --startup "$stage/start-ryzemp.sh" --channel "${RYZEMP_CHANNEL:-pruebas}"
+
+if [[ ! -f /mnt/server/server.properties ]]; then
+  port="${SERVER_PORT:-19132}"
+  [[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || {
+    echo '[RyzeMP] Puerto inicial invalido.' >&2; exit 1;
+  }
+  printf 'server-ip=0.0.0.0\nserver-port=%s\n' "$port" > /mnt/server/server.properties
+fi
+echo '[RyzeMP] Instalacion verificada. Mundos, plugins, configuracion e identidad conservados.'
