@@ -84,7 +84,7 @@ jobs:
           set -euo pipefail
           mkdir -p .ci-server/worlds .ci-server/plugins
           printf 'preserve\n' > .ci-server/worlds/sentinel.dat
-          printf 'plugin\n' > .ci-server/plugins/sentinel.dat
+          printf 'plugin\n' | sudo tee .ci-server/plugins/sentinel.dat >/dev/null
           docker run --rm --entrypoint /bin/bash \
             -e SERVER_PORT=19132 \
             -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
