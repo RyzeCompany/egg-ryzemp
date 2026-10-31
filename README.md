@@ -4,12 +4,14 @@
 
 ## Actualizar el egg del panel una vez
 
-1. Descarga [egg-ryze-m-p.json](https://raw.githubusercontent.com/RyzeCompany/egg-ryzemp/feature/ryzertc-native-egg/egg-ryze-m-p.json).
+1. Descarga [egg-ryze-m-p.json](https://raw.githubusercontent.com/RyzeCompany/egg-ryzemp/main/egg-ryze-m-p.json).
 2. En el panel de administración, abre **Nests → tu Nest → RyzeMP**. En **Egg File**, selecciona el JSON y pulsa **Update Egg**. No necesitas crear otro servidor.
 3. Conserva la imagen `ghcr.io/ptero-eggs/yolks:debian`, la asignación habitual y los valores de `server-ip` y `server-port`.
 4. Deja **Canal de actualizaciones** (`RYZEMP_CHANNEL`) en `pruebas`.
 5. Pulsa **Reinstalar** en el servidor. Esta vez reemplazará el PHAR anterior por la última prerelease preparada y cargará el RyzeRTC que esa versión necesita.
 6. Inicia el servidor y comprueba la versión instalada y `NetherNet READY`.
+
+La release normal de RyzeMP es ahora `v1.0.0-beta.4`, con dependencias publicadas beta.2 y el mismo RyzeRTC API 2. El canal selecciona su manifiesto automáticamente.
 
 Las siguientes actualizaciones solo requieren publicar una release preparada y pulsar **Reinstalar**. Un reinicio normal conserva la versión instalada. Composer no interviene en este proceso.
 
@@ -67,6 +69,6 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 
 El [workflow](.github/workflows/validate-ryzertc-egg.yml) comprueba selección de canales, errores, corrupción, conservación de datos, recuperación y reinstalación sin cambios. Además instala las releases en imágenes reales de Pterodactyl, prueba el PHAR y módulo nativo reales, rechaza una API/PHAR inválidos, actualiza un PHAR oficial anterior, conserva datos y copia anterior, rechaza un paquete PHP corrupto y vuelve a comprobar HTTP/RakNet sobre la misma asignación TCP/UDP.
 
-[Publicación de releases preparadas](https://github.com/RyzeCompany/RyzeMP/blob/feature/bedrock-1.26.60-nethernet/docs/EGG_UPDATES.md): el workflow de RyzeMP publica PHAR y checksum primero y `ryzemp-update.json` al final. Cada nueva versión debe llevar un tag nuevo.
+[Publicación de releases preparadas](https://github.com/RyzeCompany/RyzeMP/blob/main/docs/EGG_UPDATES.md): el workflow de RyzeMP publica PHAR y checksum primero y `ryzemp-update.json` al final. Cada nueva versión debe llevar un tag nuevo.
 
 El operador ya confirmó entrada real al mundo con integración.2. La actualización mediante **Reinstalar** todavía debe repetirse en su panel real. Quedan las pruebas completas de movimiento, interacción, inventario, paquetes de recursos, desconexión/reconexión y coexistencia RakNet. Las PR siguen abiertas sin fusionar a main. Sin Amber; HardCoreFactions no se modifica.

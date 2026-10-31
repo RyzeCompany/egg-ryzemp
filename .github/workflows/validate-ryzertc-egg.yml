@@ -2,7 +2,7 @@ name: Validate RyzeMP Egg + first-party RyzeRTC
 
 on:
   push:
-    branches: [feature/ryzertc-native-egg]
+    branches: [feature/ryzertc-native-egg, main]
   pull_request:
   workflow_dispatch:
 
