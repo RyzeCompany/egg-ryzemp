@@ -1,0 +1,98 @@
+name: Validate RyzeMP Egg + first-party RyzeRTC
+
+on:
+  push:
+    branches: [feature/ryzertc-native-egg]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Egg JSON, shell syntax and network contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-server
+          python3 - <<'PY'
+          import json, pathlib, re
+          data=json.loads(pathlib.Path('egg-ryze-m-p.json').read_text())
+          assert data['meta']['version']=='PTDL_v2'
+          assert data['startup']=='bash ./start-ryzemp.sh'
+          assert 'server-ip' in data['config']['files']
+          assert 'server-port' in data['config']['files']
+          script=data['scripts']['installation']['script']
+          assert script.count("cat > /mnt/server/start-ryzemp.sh <<'RYZEMP_START'")==1
+          assert script.count('\nRYZEMP_START\n')==1
+          before, rest=script.split("cat > /mnt/server/start-ryzemp.sh <<'RYZEMP_START'\n",1)
+          start, after=rest.split('\nRYZEMP_START\n',1)
+          pathlib.Path('.ci-server/.ci-install.sh').write_text(script)
+          pathlib.Path('.ci-server/.ci-start.sh').write_text(start+'\n')
+          assert 'RyzeCompany/RyzeRTC/releases/download/' in script
+          assert '392f8f62e521da03ed9960881010634f86a6345bbe5452ab065c9ca6aa24614f' in script
+          assert 'sha256sum -c SHA256SUMS.txt' in script
+          assert 'ryzertc.so' in script and 'LD_LIBRARY_PATH' in start
+          assert 'exec ./bin/php7/bin/php ./RyzeMP.phar' in start
+          for forbidden in ('nethernet-enabled=', 'nethernet-ice-port=', 'Amber-PM', 'ext-rtc', '19134'):
+              assert forbidden not in script, forbidden
+          assert 'server-ip=0.0.0.0' in script
+          assert 'server-port=%s' in script
+          assert data['docker_images']['Debian - PocketMine PHP']=='ghcr.io/ptero-eggs/yolks:debian'
+          print('PTDL v2, RyzeRTC pinned digest, shared IP/port, native loader: OK')
+          PY
+          bash -n .ci-server/.ci-install.sh
+          bash -n .ci-server/.ci-start.sh
+      - name: Test actual Pterodactyl installer image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /bin/bash \
+            -e SERVER_PORT=19132 \
+            -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
+            ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-install.sh
+          test -s .ci-server/.ryzertc-runtime/ryzertc.so
+          test -s .ci-server/start-ryzemp.sh
+          test -s .ci-server/bin/php7/bin/php.ini
+          grep -Fq 'extension="/home/container/.ryzertc-runtime/ryzertc.so"' .ci-server/bin/php7/bin/php.ini
+          grep -Fq 'server-port=19132' .ci-server/server.properties
+      - name: Test actual RyzeMP runtime image and startup script
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > .ci-server/RyzeMP.phar <<'PHP'
+          <?php
+          if (!extension_loaded('ryzertc') || !class_exists('RyzeRTC\\Runtime')) {
+              fwrite(STDERR, "RyzeRTC not inherited by PHAR runtime\n");
+              exit(1);
+          }
+          if (!extension_loaded('Zend OPcache')) exit(2);
+          echo 'RyzeMP egg mock boot passed: '.RyzeRTC\Runtime::version()."\n";
+          PHP
+          docker run --rm --entrypoint /bin/bash \
+            -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
+            -w /home/container ghcr.io/ptero-eggs/yolks:debian \
+            ./start-ryzemp.sh
+      - name: Ensure server data preservation when reinstalling
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-server/worlds .ci-server/plugins
+          printf 'preserve\n' > .ci-server/worlds/sentinel.dat
+          printf 'plugin\n' > .ci-server/plugins/sentinel.dat
+          docker run --rm --entrypoint /bin/bash \
+            -e SERVER_PORT=19132 \
+            -v "$GITHUB_WORKSPACE/.ci-server:/mnt/server" \
+            ghcr.io/ptero-eggs/installers:debian /mnt/server/.ci-install.sh
+          test "$(cat .ci-server/worlds/sentinel.dat)" = preserve
+          test "$(cat .ci-server/plugins/sentinel.dat)" = plugin
+          test -s .ci-server/RyzeMP.phar
+          docker run --rm --entrypoint /bin/bash \
+            -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
+            -w /home/container ghcr.io/ptero-eggs/yolks:debian \
+            ./start-ryzemp.sh
