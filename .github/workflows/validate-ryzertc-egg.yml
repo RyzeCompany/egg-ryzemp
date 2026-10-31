@@ -68,19 +68,6 @@ jobs:
           test -s .ci-server/bin/php7/bin/php.ini
           grep -Fq 'extension="/home/container/.ryzertc-runtime/ryzertc.so"' .ci-server/bin/php7/bin/php.ini
           grep -Fq 'server-port=19132' .ci-server/server.properties
-      - name: Test actual RyzeMP PHAR and native runtime in Pterodactyl runtime image
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm --entrypoint /bin/bash \
-            -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
-            -w /home/container ghcr.io/ptero-eggs/yolks:debian -lc '
-              set -euo pipefail
-              export PHPRC=/home/container/bin/php7/bin
-              export LD_LIBRARY_PATH=/home/container/.ryzertc-runtime/lib
-              ./bin/php7/bin/php -r '\''if(!extension_loaded("ryzertc") || !extension_loaded("Zend OPcache")) exit(1);'\''
-              ./bin/php7/bin/php ./RyzeMP.phar --version
-            '
       - name: Smoke-test actual PHAR start with native RyzeRTC loaded
         shell: bash
         run: |
@@ -102,6 +89,19 @@ jobs:
             echo 'RyzeMP PHAR reported a fatal startup error' >&2
             exit 1
           fi
+      - name: Test actual RyzeMP PHAR and native runtime in Pterodactyl runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /bin/bash \
+            -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
+            -w /home/container ghcr.io/ptero-eggs/yolks:debian -lc '
+              set -euo pipefail
+              export PHPRC=/home/container/bin/php7/bin
+              export LD_LIBRARY_PATH=/home/container/.ryzertc-runtime/lib
+              ./bin/php7/bin/php -r '\''if(!extension_loaded("ryzertc") || !extension_loaded("Zend OPcache")) exit(1);'\''
+              ./bin/php7/bin/php ./RyzeMP.phar --version
+            '
       - name: Ensure server data preservation when reinstalling
         shell: bash
         run: |
