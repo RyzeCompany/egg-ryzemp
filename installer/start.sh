@@ -35,6 +35,28 @@ if ! grep -Fxq "extension_dir=\"$ext_dir\"" "$php_ini"; then
   printf '\nextension_dir="%s"\n' "$ext_dir" >> "$php_ini"
 fi
 
+# El Egg configura Go exclusivamente desde el binario aprobado de su
+# release. No heredar valores manuales que apunten a otra version.
+unset RYZEMP_VANILLAGEN_BINARY RYZEMP_VANILLAGEN_SHA256 RYZEMP_VANILLAGEN_STAGE
+if [[ -d .ryzemp-vanillagen ]]; then
+  if [[ -e .ryzemp-vanillagen/vanillagen-linux-amd64 ]]; then
+    if [[ ! -x .ryzemp-vanillagen/vanillagen-linux-amd64 || ! -s .ryzemp-vanillagen/SHA256SUMS ]]; then
+      echo '[RyzeMP] vanillagen incompleto o sin permisos. Reinstala el Egg.' >&2
+      exit 1
+    fi
+    if ! (cd .ryzemp-vanillagen && sha256sum -c --status SHA256SUMS); then
+      echo '[RyzeMP] vanillagen no paso la verificacion SHA-256. Reinstala el Egg.' >&2
+      exit 1
+    fi
+    export RYZEMP_VANILLAGEN_BINARY=/home/container/.ryzemp-vanillagen/vanillagen-linux-amd64
+    export RYZEMP_VANILLAGEN_SHA256="$(sha256sum "$RYZEMP_VANILLAGEN_BINARY" | cut -d ' ' -f1)"
+    export RYZEMP_VANILLAGEN_STAGE=full
+    echo '[RyzeMP] Go nativo verificado (terrain, materiales y carvers); respaldo PHP disponible.'
+  else
+    echo '[RyzeMP] La release actual usa generacion PHP; Go no es necesario.'
+  fi
+fi
+
 # Cargar la biblioteca nativa desde su directorio separado del PHAR.
 if [[ ! -s ./.ryzertc-runtime/ryzertc.so || ! -s ./.ryzertc-runtime/lib/libdatachannel.so.0.24 ]]; then
   echo '[RyzeMP] Falta RyzeRTC. Reinstala el Egg para descargar la release oficial.' >&2

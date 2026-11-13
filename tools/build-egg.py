@@ -11,9 +11,9 @@ script = (root / 'installer/install.sh.in').read_text()
 for token, name in [('@@UPDATER@@', 'update.py'), ('@@START@@', 'start.sh')]:
     assert script.count(token) == 1
     script = script.replace(token, (root / 'installer' / name).read_text().rstrip())
-egg['description'] = ('RyzeMP con PHP 8.4 ZTS y RyzeRTC nativo fuera del PHAR. '
-    'Reinstalar actualiza desde el canal oficial seleccionado, verifica SHA-256 '
-    'y conserva datos y una copia de la instalacion anterior.')
+egg['description'] = ('RyzeMP con PHP 8.4 ZTS, RyzeRTC y aceleracion Go nativa fuera del PHAR. '
+    'Go se activa solo en releases compatibles; reinstalar verifica SHA-256 '
+    'y conserva mundos, plugins, configuraciones y copia anterior.')
 egg['scripts']['installation']['script'] = script
 egg['variables'] = [{
     'name': 'Canal de actualizaciones',

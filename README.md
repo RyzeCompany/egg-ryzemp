@@ -1,4 +1,4 @@
-# RyzeMP · Egg de Pterodactyl con RyzeRTC
+# RyzeMP · Egg de Pterodactyl con RyzeRTC y Go nativo
 
 **Reinstalar actualiza RyzeMP desde las releases oficiales**, verifica los archivos y conserva mundos, plugins, configuración y la identidad NetherNet. PHP y RyzeRTC se preparan antes de sustituir la instalación. El módulo nativo y sus bibliotecas permanecen fuera de `RyzeMP.phar`.
 
@@ -14,6 +14,16 @@
 La release normal actual es [RyzeMP v1.0.0-beta.4](https://github.com/RyzeCompany/RyzeMP/releases/tag/v1.0.0-beta.4), con dependencias públicas beta.2 y RyzeRTC API 2. SHA-256 del PHAR: `b62e43fcbb3cfa25b82d74dd761283c06235ab04ef756666cde6641c957f0d89`. El canal selecciona su manifiesto automáticamente.
 
 Las siguientes actualizaciones solo requieren publicar una release preparada y pulsar **Reinstalar**. Un reinicio normal conserva la versión instalada. Composer no interviene en este proceso.
+
+## Aceleracion nativa Go (worldgen core-v6)
+
+El Egg instala `vanillagen-linux-amd64` **fuera del PHAR** solamente cuando una release oficial de RyzeMP lleva un `ryzemp-update.json` de **schema 2** con el archivo Go, SHA-256, protocolo **7**, algoritmo **4** y etapa `full`. Reinstalar verifica el SHA-256 del manifiesto proporcionado por GitHub, el SHA-256 del Go y el resultado real de `vanillagen -version` **antes** de reemplazar PHP, RyzeRTC o el PHAR. Los esquemas anteriores (schema 1) se siguen aceptando, pero **sin Go**.
+
+En el arranque, el Egg vuelve a verificar el hash y configura `RYZEMP_VANILLAGEN_BINARY`, `RYZEMP_VANILLAGEN_SHA256` y `RYZEMP_VANILLAGEN_STAGE=full` automaticamente. Usa un puerto local efimero en 127.0.0.1 y **ninguna asignacion TCP/UDP publica adicional**. El nuevo directorio `.ryzemp-vanillagen/` se actualiza junto con los otros binarios, admite copia anterior en `.ryzemp-backups/previous/` y recupera transacciones interrumpidas. Tambien se pueden recuperar los diarios antiguos.
+
+**El Egg no descarga datos propietarios ni cambia mundos existentes**. Para generar mundos nuevos en `core-v6`, primero prepara un caché Java 26.3 externo e inmutable segun la [guia de RyzeMP](https://github.com/RyzeCompany/RyzeMP/blob/integration/vanillamine-worldgen/docs/WORLDGEN_GO_VPS.md).
+
+La integracion Go sigue en [RyzeMP PR #60](https://github.com/RyzeCompany/RyzeMP/pull/60). Un artefacto de Actions no basta: para instalarlo mediante Reinstalar hace falta una **prerelease oficial** con PHAR, Go y manifiesto schema 2. Hasta publicarla, las reinstalaciones usan la ultima release oficial, sin acelerar Go.
 
 ## Canales
 
