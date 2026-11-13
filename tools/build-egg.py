@@ -27,6 +27,12 @@ egg['variables'] = [{
     'env_variable': 'RYZEMP_VANILLA_WORLDGEN', 'default_value': 'false',
     'user_viewable': True, 'user_editable': True,
     'rules': 'required|string|in:true,false', 'field_type': 'text',
+}, {
+    'name': 'Perfil de rendimiento de chunks (beta)',
+    'description': 'true: registra resúmenes de colas, generación, validación y envío inicial de chunks. No registra nombres ni coordenadas. Desactivado por defecto.',
+    'env_variable': 'RYZEMP_WORLDGEN_PROFILE', 'default_value': 'false',
+    'user_viewable': True, 'user_editable': True,
+    'rules': 'required|string|in:true,false', 'field_type': 'text',
 }]
 result = json.dumps(egg, ensure_ascii=False, indent=4) + '\n'
 parser = argparse.ArgumentParser()

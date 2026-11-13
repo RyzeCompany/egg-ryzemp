@@ -23,6 +23,14 @@ Los datos se descargan en el primer arranque directamente de Mojang, Temurin y G
 
 Si el mundo actual es PocketMine, conserva el mundo y genera uno nuevo con nombre world_vanilla_test o un sufijo libre. Conserva tambien los mundos Nether/End existentes. Para mundos Vanilla anteriores respeta el hash ya fijado, nunca lo cambia silenciosamente. La release beta.5 actual no tiene este comando: para probar antes de una nueva release oficial se necesita el PHAR actualizado del PR #60, mas el nuevo start-ryzemp.sh. Reinstalar por el canal pruebas actual sustituye el PHAR manual por beta.5.
 
+## Perfilador opcional de chunks y generación (beta)
+
+En **Startup → Perfil de rendimiento de chunks (beta)** cambia \`RYZEMP_WORLDGEN_PROFILE\` de \`false\` a \`true\` y reinicia con un PHAR actualizado del [PR #60](https://github.com/RyzeCompany/RyzeMP/pull/60). No requiere ejecutar comandos Linux ni cambiar puertos.
+
+El perfilador agrupa 16 tareas de población y muestra una línea \`[Worldgen perf]\` con tiempos medios y p95 de **espera en cola**, **ejecución del worker**, **validación SHA-256**, **terreno Go/PHP**, **escritura bloques/biomas** y **decoración**. En la entrada inicial muestra los tiempos de solicitud/población y preparación de paquetes antes de avisar al cliente. Son medidas desde el servidor: no confundir la puesta en cola del paquete con la recepción final por el móvil. No se registran nombres, coordenadas ni semillas. El modo se desactiva por defecto para evitar coste de perfilado y más mensajes en consola.
+
+No cambies los mundos ni borres \`vanillamine-cache/\` para activar el perfil. El perfilador ayuda a detectar cuellos de botella antes de ajustar el número de async-workers.
+
 ## Aceleracion nativa Go (worldgen core-v6)
 
 El Egg instala `vanillagen-linux-amd64` **fuera del PHAR** solamente cuando una release oficial de RyzeMP lleva un `ryzemp-update.json` de **schema 2** con el archivo Go, SHA-256, protocolo **7**, algoritmo **4** y etapa `full`. Reinstalar verifica el SHA-256 del manifiesto proporcionado por GitHub, el SHA-256 del Go y el resultado real de `vanillagen -version` **antes** de reemplazar PHP, RyzeRTC o el PHAR. Los esquemas anteriores (schema 1) se siguen aceptando, pero **sin Go**.
