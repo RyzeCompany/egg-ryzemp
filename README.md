@@ -11,7 +11,7 @@
 5. Pulsa **Reinstalar** en el servidor. Esta vez reemplazará el PHAR anterior por la última prerelease preparada y cargará el RyzeRTC que esa versión necesita.
 6. Inicia el servidor y comprueba la versión instalada y `NetherNet READY`.
 
-La release normal actual es [RyzeMP v1.0.0-beta.4](https://github.com/RyzeCompany/RyzeMP/releases/tag/v1.0.0-beta.4), con dependencias públicas beta.2 y RyzeRTC API 2. SHA-256 del PHAR: `b62e43fcbb3cfa25b82d74dd761283c06235ab04ef756666cde6641c957f0d89`. El canal selecciona su manifiesto automáticamente.
+La ultima prerelease preparada al incorporar Go al Egg es [RyzeMP v1.0.0-beta.5](https://github.com/RyzeCompany/RyzeMP/releases/tag/v1.0.0-beta.5), con RyzeRTC API 2 y generacion PHP. SHA-256 del PHAR: `c67173111ab59e3b6baf8c1ed51a89d7eabe9c6b3a1578104670f4a8b5938c44`. La futura release de Go necesitara un tag y un manifiesto schema 2 nuevos. El canal selecciona su manifiesto automaticamente.
 
 Las siguientes actualizaciones solo requieren publicar una release preparada y pulsar **Reinstalar**. Un reinicio normal conserva la versión instalada. Composer no interviene en este proceso.
 

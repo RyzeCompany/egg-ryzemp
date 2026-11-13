@@ -38,6 +38,13 @@ fi
 # El Egg configura Go exclusivamente desde el binario aprobado de su
 # release. No heredar valores manuales que apunten a otra version.
 unset RYZEMP_VANILLAGEN_BINARY RYZEMP_VANILLAGEN_SHA256 RYZEMP_VANILLAGEN_STAGE
+# A schema-2 release requires its native executable. Do not silently run
+# an unaccelerated world because the native directory was lost.
+if [[ -s .ryzemp-install.json ]] && grep -Eq '^[[:space:]]*"vanillagen"[[:space:]]*:[[:space:]]*\{' .ryzemp-install.json && \
+    [[ ! -x .ryzemp-vanillagen/vanillagen-linux-amd64 ]]; then
+  echo '[RyzeMP] Esta release requiere Go pero falta el binario. Reinstala el Egg.' >&2
+  exit 1
+fi
 if [[ -d .ryzemp-vanillagen ]]; then
   if [[ -e .ryzemp-vanillagen/vanillagen-linux-amd64 ]]; then
     if [[ ! -x .ryzemp-vanillagen/vanillagen-linux-amd64 || ! -s .ryzemp-vanillagen/SHA256SUMS ]]; then
