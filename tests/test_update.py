@@ -55,6 +55,9 @@ class UpdaterTests(unittest.TestCase):
         self.preflight = mock.patch.object(updater, 'validate')
         self.validate = self.preflight.start()
         self.addCleanup(self.preflight.stop)
+        self.go_preflight = mock.patch.object(updater, 'validate_go_binary')
+        self.validate_go = self.go_preflight.start()
+        self.addCleanup(self.go_preflight.stop)
         self.seed()
 
     def seed(self):
@@ -70,6 +73,10 @@ class UpdaterTests(unittest.TestCase):
 
     def release(self, tag, identifier, channel='pruebas', **changes):
         phar, native = b'PHAR-' + tag.encode(), native_zip()
+        go_bytes = b'synthetic-vanillagen-' + tag.encode()
+        if changes.get('schema') == 2 and 'vanillagen' not in changes:
+            changes['vanillagen'] = {'asset': updater.GO_FILENAME,
+                'sha256': checksum(go_bytes), 'protocol': 7, 'algorithm': 4, 'stage': 'full'}
         manifest = {'schema': 1, 'channel': channel, 'release': tag, 'platform': updater.PLATFORM,
             'phar': {'asset': 'RyzeMP.phar', 'sha256': checksum(phar)},
             'ryzertc': {'tag': 'v0.1.0-dev.3', 'asset': 'runtime.zip', 'sha256': checksum(native), 'api': 2, 'version': '0.1.0-dev.3'}}
@@ -80,6 +87,10 @@ class UpdaterTests(unittest.TestCase):
                 {'name': updater.MANIFEST, 'state': 'uploaded', 'digest': 'sha256:' + checksum(body),
                  'browser_download_url': updater.asset_url(updater.MP, tag, updater.MANIFEST)},
                 {'name': 'RyzeMP.phar', 'state': 'uploaded', 'digest': 'sha256:' + checksum(phar)}]}
+        if manifest['schema'] == 2 and isinstance(manifest.get('vanillagen'), dict):
+            release['assets'].append({'name': updater.GO_FILENAME, 'state': 'uploaded',
+                                      'digest': 'sha256:' + checksum(go_bytes)})
+            self.downloads[updater.asset_url(updater.MP, tag, updater.GO_FILENAME)] = go_bytes
         self.releases.append(release)
         self.downloads[updater.asset_url(updater.MP, tag, updater.MANIFEST)] = body
         self.downloads[updater.asset_url(updater.MP, tag, 'RyzeMP.phar')] = phar
@@ -117,6 +128,92 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual((self.root / 'nethernet/operator-key.pem').stat().st_mode & 0o777, 0o600)
         self.validate.assert_called_once()
 
+    def test_schema2_installs_verified_go_outside_phar_preserving_player_data(self):
+        self.release('go', 29, schema=2)
+        before = self.snapshot()
+        state = self.install()
+        self.assertEqual(state['release'], 'go')
+        binary = self.root / '.ryzemp-vanillagen' / updater.GO_FILENAME
+        self.assertEqual(binary.read_bytes(), b'synthetic-vanillagen-go')
+        self.assertEqual(binary.stat().st_mode & 0o777, 0o700)
+        self.assertEqual((self.root / '.ryzemp-vanillagen/SHA256SUMS').read_text(),
+                         checksum(binary.read_bytes()) + '  ' + updater.GO_FILENAME + '\n')
+        self.assertEqual(state['vanillagen']['protocol'], 7)
+        self.validate_go.assert_called_once()
+        for name in ('worlds/world/level.dat', 'plugins/test/config.yml',
+                     'server.properties', 'nethernet/operator-key.pem'):
+            self.assertEqual((self.root / name).read_bytes(), before[name])
+
+    def test_schema1_update_disables_go_but_preserves_previous_binary(self):
+        self.release('go', 29, schema=2)
+        self.install()
+        self.release('later', 30, schema=1)
+        state = self.install()
+        self.assertIsNone(state['vanillagen'])
+        self.assertFalse((self.root / '.ryzemp-vanillagen' / updater.GO_FILENAME).exists())
+        self.assertEqual((self.root / '.ryzemp-backups/previous/vanillagen' /
+                          updater.GO_FILENAME).read_bytes(), b'synthetic-vanillagen-go')
+
+    def test_schema2_bad_go_checksum_keeps_all_old_files(self):
+        self.release('go', 29, schema=2)
+        self.downloads[updater.asset_url(updater.MP, 'go', updater.GO_FILENAME)] = b'altered'
+        before = self.snapshot()
+        with self.assertRaisesRegex(updater.UpdateError, 'SHA-256 del ejecutable Go'):
+            self.install()
+        self.assertEqual(self.snapshot(), before)
+
+    def test_schema2_rejects_bad_go_protocol_or_stage(self):
+        for bad in ({'protocol': 8}, {'algorithm': 5}, {'stage': 'terrain'}):
+            with self.subTest(bad=bad):
+                self.releases = [r for r in self.releases if r['tag_name'] != 'bad']
+                self.release('bad', 29, schema=2)
+                url = updater.asset_url(updater.MP, 'bad', updater.MANIFEST)
+                manifest = json.loads(self.downloads[url])
+                manifest['vanillagen'].update(bad)
+                body = json.dumps(manifest).encode()
+                self.downloads[url] = body
+                self.releases[-1]['assets'][0]['digest'] = 'sha256:' + checksum(body)
+                before = self.snapshot()
+                with self.assertRaisesRegex(updater.UpdateError, 'protocolo/algoritmo'):
+                    self.install()
+                self.assertEqual(self.snapshot(), before)
+
+    def test_schema2_version_preflight_failure_keeps_original_files(self):
+        self.release('go', 29, schema=2)
+        self.validate_go.side_effect = updater.UpdateError('incompatible Go version')
+        before = self.snapshot()
+        with self.assertRaisesRegex(updater.UpdateError, 'incompatible Go'):
+            self.install()
+        self.assertEqual(self.snapshot(), before)
+
+    def test_failed_commit_after_replacing_go_rolls_back_everything(self):
+        self.release('go', 29, schema=2)
+        self.install()
+        self.release('go2', 30, schema=2)
+        before = self.snapshot()
+        original = updater.os.replace
+        def replace(source, destination):
+            if pathlib.Path(destination) == self.root / '.ryzemp-install.json' and '.ryzemp-stage.' in str(source):
+                raise OSError('Go transaction failure')
+            return original(source, destination)
+        with mock.patch.object(updater.os, 'replace', side_effect=replace):
+            with self.assertRaisesRegex(OSError, 'Go transaction failure'):
+                self.install()
+        self.assertEqual(self.snapshot(), before)
+
+    def test_legacy_journal_recovers_when_upgrading_egg(self):
+        before = self.snapshot()
+        transaction = self.root / '.ryzemp-update-transaction'
+        (transaction / 'old').mkdir(parents=True)
+        entries = [{'target': target, 'had_old': (self.root / target).exists()}
+                   for target in updater.LEGACY_TARGETS]
+        updater.write_json(transaction / 'journal.json', entries)
+        for i in (0, 1, 2):
+            destination = self.root / updater.LEGACY_TARGETS[i]
+            destination.rename(transaction / 'old' / updater.LEGACY_BACKUPS[i])
+        updater.recover(self.root)
+        self.assertEqual(self.snapshot(), before)
+
     def test_identical_reinstall_keeps_last_useful_backup(self):
         self.install()
         before = self.snapshot()
@@ -140,7 +237,7 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
 
     def test_newest_invalid_manifest_never_falls_back_to_older_release(self):
-        self.release('broken', 29, schema=2)
+        self.release('broken', 29, schema=3)
         with self.assertRaisesRegex(updater.UpdateError, 'actualiza el egg'):
             self.install()
         self.assertFalse(any('/old/RyzeMP.phar' in url for url in self.calls))
@@ -298,6 +395,25 @@ class UpdaterTests(unittest.TestCase):
             with self.assertRaisesRegex(updater.UpdateError, 'Espacio insuficiente para preparar PHP'):
                 self.install()
         self.assertEqual(self.snapshot(), before)
+
+
+class GoPreflightTests(unittest.TestCase):
+    def test_go_version_is_checked_before_installation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / updater.GO_FILENAME
+            path.write_bytes(b'elf-placeholder')
+            path.chmod(0o700)
+            for stdout, valid in [('vanillagen dev protocol 7 algorithm 4\n', True),
+                                  ('vanillagen dev protocol 7 algorithm 5\n', False),
+                                  ('invalid', False)]:
+                with self.subTest(stdout=stdout), mock.patch.object(
+                        updater.subprocess, 'run',
+                        return_value=mock.Mock(returncode=0, stdout=stdout, stderr='')):
+                    if valid:
+                        updater.validate_go_binary(path)
+                    else:
+                        with self.assertRaisesRegex(updater.UpdateError, 'Version'):
+                            updater.validate_go_binary(path)
 
 
 class PHPTempTests(unittest.TestCase):
