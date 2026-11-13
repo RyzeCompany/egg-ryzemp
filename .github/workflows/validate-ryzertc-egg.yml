@@ -48,6 +48,8 @@ jobs:
           assert 'vanillagen no paso la verificacion SHA-256' in start
           assert 'RYZEMP_CHANNEL:-pruebas' in script
           assert data['variables'][0]['default_value']=='pruebas'
+          assert any(v['env_variable']=='RYZEMP_VANILLA_WORLDGEN' and v['default_value']=='false' for v in data['variables'])
+          assert '--prepare-vanilla-worldgen' in start and 'RYZEMP_VANILLA_WORLDGEN' in start
           assert 'ryzertc.so' in script and 'LD_LIBRARY_PATH' in start
           assert 'sys_temp_dir=$TMPDIR' in start and './RyzeMP.phar --no-wizard' in start
           for forbidden in ('nethernet-enabled=', 'nethernet-ice-port=', 'Amber-PM', 'ext-rtc', '19134'):

@@ -21,6 +21,12 @@ egg['variables'] = [{
     'env_variable': 'RYZEMP_CHANNEL', 'default_value': 'pruebas',
     'user_viewable': True, 'user_editable': True,
     'rules': 'required|string|in:pruebas,estable', 'field_type': 'text',
+}, {
+    'name': 'Generacion Vanilla automatica (beta)',
+    'description': 'true: al iniciar prepara datos Java 26.3, SHA y mundos NUEVOS core-v6. Conserva todos los mundos y cache; primera preparacion requiere red, RAM y espacio.',
+    'env_variable': 'RYZEMP_VANILLA_WORLDGEN', 'default_value': 'false',
+    'user_viewable': True, 'user_editable': True,
+    'rules': 'required|string|in:true,false', 'field_type': 'text',
 }]
 result = json.dumps(egg, ensure_ascii=False, indent=4) + '\n'
 parser = argparse.ArgumentParser()

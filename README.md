@@ -15,6 +15,14 @@ La ultima prerelease preparada al incorporar Go al Egg es [RyzeMP v1.0.0-beta.5]
 
 Las siguientes actualizaciones solo requieren publicar una release preparada y pulsar **Reinstalar**. Un reinicio normal conserva la versión instalada. Composer no interviene en este proceso.
 
+## Vanilla automatico sin comandos Linux ni HASH_REAL
+
+Pterodactyl Startup ofrece **Generacion Vanilla automatica (beta)**, valores true / false (desactivado por defecto). Al poner true y arrancar un PHAR con VanillaWorldgenSetup, el lanzador invoca --prepare-vanilla-worldgen: prepara en el propio servidor los datos oficiales Java 26.3 con el descargador verificado de VanillaMine, calcula SHA-256 y configura los nuevos mundos core-v6 en server.properties y dimensions.yml. No se necesita SSH, Composer ni escribir HASH_REAL.
+
+Los datos se descargan en el primer arranque directamente de Mojang, Temurin y GeyserMC, bajo sus condiciones de uso; no se redistribuyen en PHAR o Egg. El directorio vanillamine-cache/ persiste tras reinstalar. Se necesitan red, espacio y memoria suficiente, y tar en el contenedor Debian. Una descarga interrumpida puede dejar un cache parcial que debe borrarse desde Files antes de reintentar.
+
+Si el mundo actual es PocketMine, conserva el mundo y genera uno nuevo con nombre world_vanilla_test o un sufijo libre. Conserva tambien los mundos Nether/End existentes. Para mundos Vanilla anteriores respeta el hash ya fijado, nunca lo cambia silenciosamente. La release beta.5 actual no tiene este comando: para probar antes de una nueva release oficial se necesita el PHAR actualizado del PR #60, mas el nuevo start-ryzemp.sh. Reinstalar por el canal pruebas actual sustituye el PHAR manual por beta.5.
+
 ## Aceleracion nativa Go (worldgen core-v6)
 
 El Egg instala `vanillagen-linux-amd64` **fuera del PHAR** solamente cuando una release oficial de RyzeMP lleva un `ryzemp-update.json` de **schema 2** con el archivo Go, SHA-256, protocolo **7**, algoritmo **4** y etapa `full`. Reinstalar verifica el SHA-256 del manifiesto proporcionado por GitHub, el SHA-256 del Go y el resultado real de `vanillagen -version` **antes** de reemplazar PHP, RyzeRTC o el PHAR. Los esquemas anteriores (schema 1) se siguen aceptando, pero **sin Go**.
