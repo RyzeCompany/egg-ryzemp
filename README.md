@@ -1,4 +1,4 @@
-# RyzeMP · Egg de Pterodactyl con RyzeRTC
+# RyzeMP · Egg de Pterodactyl con RyzeRTC y Go nativo
 
 **Reinstalar actualiza RyzeMP desde las releases oficiales**, verifica los archivos y conserva mundos, plugins, configuración y la identidad NetherNet. PHP y RyzeRTC se preparan antes de sustituir la instalación. El módulo nativo y sus bibliotecas permanecen fuera de `RyzeMP.phar`.
 
@@ -11,9 +11,35 @@
 5. Pulsa **Reinstalar** en el servidor. Esta vez reemplazará el PHAR anterior por la última prerelease preparada y cargará el RyzeRTC que esa versión necesita.
 6. Inicia el servidor y comprueba la versión instalada y `NetherNet READY`.
 
-La release normal actual es [RyzeMP v1.0.0-beta.4](https://github.com/RyzeCompany/RyzeMP/releases/tag/v1.0.0-beta.4), con dependencias públicas beta.2 y RyzeRTC API 2. SHA-256 del PHAR: `b62e43fcbb3cfa25b82d74dd761283c06235ab04ef756666cde6641c957f0d89`. El canal selecciona su manifiesto automáticamente.
+La ultima prerelease preparada al incorporar Go al Egg es [RyzeMP v1.0.0-beta.5](https://github.com/RyzeCompany/RyzeMP/releases/tag/v1.0.0-beta.5), con RyzeRTC API 2 y generacion PHP. SHA-256 del PHAR: `c67173111ab59e3b6baf8c1ed51a89d7eabe9c6b3a1578104670f4a8b5938c44`. La futura release de Go necesitara un tag y un manifiesto schema 2 nuevos. El canal selecciona su manifiesto automaticamente.
 
 Las siguientes actualizaciones solo requieren publicar una release preparada y pulsar **Reinstalar**. Un reinicio normal conserva la versión instalada. Composer no interviene en este proceso.
+
+## Vanilla automatico sin comandos Linux ni HASH_REAL
+
+Pterodactyl Startup ofrece **Generacion Vanilla automatica (beta)**, valores true / false (desactivado por defecto). Al poner true y arrancar un PHAR con VanillaWorldgenSetup, el lanzador invoca --prepare-vanilla-worldgen: prepara en el propio servidor los datos oficiales Java 26.3 con el descargador verificado de VanillaMine, calcula SHA-256 y configura los nuevos mundos core-v6 en server.properties y dimensions.yml. No se necesita SSH, Composer ni escribir HASH_REAL.
+
+Los datos se descargan en el primer arranque directamente de Mojang, Temurin y GeyserMC, bajo sus condiciones de uso; no se redistribuyen en PHAR o Egg. El directorio vanillamine-cache/ persiste tras reinstalar. Se necesitan red, espacio y memoria suficiente, y tar en el contenedor Debian. Una descarga interrumpida puede dejar un cache parcial que debe borrarse desde Files antes de reintentar.
+
+Si el mundo actual es PocketMine, conserva el mundo y genera uno nuevo con nombre world_vanilla_test o un sufijo libre. Conserva tambien los mundos Nether/End existentes. Para mundos Vanilla anteriores respeta el hash ya fijado, nunca lo cambia silenciosamente. La release beta.5 actual no tiene este comando: para probar antes de una nueva release oficial se necesita el PHAR actualizado del PR #60, mas el nuevo start-ryzemp.sh. Reinstalar por el canal pruebas actual sustituye el PHAR manual por beta.5.
+
+## Perfilador opcional de chunks y generación (beta)
+
+En **Startup → Perfil de rendimiento de chunks (beta)** cambia \`RYZEMP_WORLDGEN_PROFILE\` de \`false\` a \`true\` y reinicia con un PHAR actualizado del [PR #60](https://github.com/RyzeCompany/RyzeMP/pull/60). No requiere ejecutar comandos Linux ni cambiar puertos.
+
+El perfilador agrupa 16 tareas de población y muestra una línea \`[Worldgen perf]\` con tiempos medios y p95 de **espera en cola**, **ejecución del worker**, **validación SHA-256**, **terreno Go/PHP**, **escritura bloques/biomas** y **decoración**. En la entrada inicial muestra los tiempos de solicitud/población y preparación de paquetes antes de avisar al cliente. Son medidas desde el servidor: no confundir la puesta en cola del paquete con la recepción final por el móvil. No se registran nombres, coordenadas ni semillas. El modo se desactiva por defecto para evitar coste de perfilado y más mensajes en consola.
+
+No cambies los mundos ni borres \`vanillamine-cache/\` para activar el perfil. El perfilador ayuda a detectar cuellos de botella antes de ajustar el número de async-workers.
+
+## Aceleracion nativa Go (worldgen core-v6)
+
+El Egg instala `vanillagen-linux-amd64` **fuera del PHAR** solamente cuando una release oficial de RyzeMP lleva un `ryzemp-update.json` de **schema 2** con el archivo Go, SHA-256, protocolo **7**, algoritmo **4** y etapa `full`. Reinstalar verifica el SHA-256 del manifiesto proporcionado por GitHub, el SHA-256 del Go y el resultado real de `vanillagen -version` **antes** de reemplazar PHP, RyzeRTC o el PHAR. Los esquemas anteriores (schema 1) se siguen aceptando, pero **sin Go**.
+
+En el arranque, el Egg vuelve a verificar el hash y configura `RYZEMP_VANILLAGEN_BINARY`, `RYZEMP_VANILLAGEN_SHA256` y `RYZEMP_VANILLAGEN_STAGE=full` automaticamente. Usa un puerto local efimero en 127.0.0.1 y **ninguna asignacion TCP/UDP publica adicional**. El nuevo directorio `.ryzemp-vanillagen/` se actualiza junto con los otros binarios, admite copia anterior en `.ryzemp-backups/previous/` y recupera transacciones interrumpidas. Tambien se pueden recuperar los diarios antiguos.
+
+**El Egg no descarga datos propietarios ni cambia mundos existentes**. Para generar mundos nuevos en `core-v6`, primero prepara un caché Java 26.3 externo e inmutable segun la [guia de RyzeMP](https://github.com/RyzeCompany/RyzeMP/blob/integration/vanillamine-worldgen/docs/WORLDGEN_GO_VPS.md).
+
+La integracion Go sigue en [RyzeMP PR #60](https://github.com/RyzeCompany/RyzeMP/pull/60). Un artefacto de Actions no basta: para instalarlo mediante Reinstalar hace falta una **prerelease oficial** con PHAR, Go y manifiesto schema 2. Hasta publicarla, las reinstalaciones usan la ultima release oficial, sin acelerar Go.
 
 ## Canales
 

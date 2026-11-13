@@ -21,8 +21,16 @@ RTC = 'RyzeCompany/RyzeRTC'
 MANIFEST = 'ryzemp-update.json'
 PLATFORM = {'os': 'linux', 'arch': 'x86_64', 'php': '8.4', 'php_api': 20240924, 'zts': True}
 # Install the guarded launcher first, including when upgrading from an older egg.
-TARGETS = ('start-ryzemp.sh', 'bin/php7', '.ryzertc-runtime', 'RyzeMP.phar', '.ryzemp-install.json')
-BACKUPS = ('start-ryzemp.sh', 'php7', 'ryzertc-runtime', 'RyzeMP.phar', 'install.json')
+# Recover transactions left by the previous RyzeRTC-only Egg as well.
+LEGACY_TARGETS = ('start-ryzemp.sh', 'bin/php7', '.ryzertc-runtime', 'RyzeMP.phar', '.ryzemp-install.json')
+LEGACY_BACKUPS = ('start-ryzemp.sh', 'php7', 'ryzertc-runtime', 'RyzeMP.phar', 'install.json')
+TARGETS = ('start-ryzemp.sh', 'bin/php7', '.ryzertc-runtime', 'RyzeMP.phar',
+           '.ryzemp-vanillagen', '.ryzemp-install.json')
+BACKUPS = ('start-ryzemp.sh', 'php7', 'ryzertc-runtime', 'RyzeMP.phar',
+           'vanillagen', 'install.json')
+GO_FILENAME = 'vanillagen-linux-amd64'
+GO_PROTOCOL = 7
+GO_ALGORITHM = 4
 
 
 class UpdateError(Exception):
@@ -121,7 +129,7 @@ def select_release(channel, directory):
     manifest = fetch_json(url, directory, 64 * 1024)
     require(sha(directory / 'response.json') == digest(expected[7:]), 'SHA-256 del manifiesto incorrecto.')
     require(isinstance(manifest, dict), 'Manifiesto de actualizacion invalido.')
-    require(type(manifest.get('schema')) is int and manifest['schema'] == 1,
+    require(type(manifest.get('schema')) is int and manifest['schema'] in (1, 2),
             'Formato nuevo de actualizaciones: actualiza el egg del panel.')
     require(manifest.get('channel') == channel and manifest.get('release') == release['tag_name'],
             'El manifiesto no corresponde al canal/release seleccionado.')
@@ -140,6 +148,21 @@ def select_release(channel, directory):
     phar_assets = [a for a in release['assets'] if a.get('name') == phar['asset'] and a.get('state') == 'uploaded']
     require(len(phar_assets) == 1 and phar_assets[0].get('digest') == 'sha256:' + phar['sha256'],
             'PHAR ausente, incompleto o con SHA-256 distinto en GitHub.')
+    if manifest['schema'] == 1:
+        require('vanillagen' not in manifest, 'El manifiesto antiguo no admite Go.')
+    else:
+        go = manifest.get('vanillagen')
+        require(isinstance(go, dict), 'La release de worldgen Go necesita vanillagen.')
+        require(go.get('asset') == GO_FILENAME, 'Nombre del ejecutable Go invalido.')
+        digest(go.get('sha256'))
+        require(type(go.get('protocol')) is int and go['protocol'] == GO_PROTOCOL
+                and type(go.get('algorithm')) is int and go['algorithm'] == GO_ALGORITHM
+                and go.get('stage') == 'full',
+                'La version del protocolo/algoritmo Go no coincide con RyzeMP.')
+        go_assets = [a for a in release['assets'] if a.get('name') == go['asset']
+                     and a.get('state') == 'uploaded']
+        require(len(go_assets) == 1 and go_assets[0].get('digest') == 'sha256:' + go['sha256'],
+                'Ejecutable Go ausente, incompleto o con SHA-256 distinto en GitHub.')
     return manifest, {'channel': channel, 'release': release['tag_name'],
         'published_at': release['published_at'], 'release_id': release['id'], 'manifest_sha256': expected[7:]}
 
@@ -264,6 +287,22 @@ def validate(php_dir, phar, runtime, rtc):
         'extension="/home/container/.ryzertc-runtime/ryzertc.so"\n')
 
 
+
+def validate_go_binary(path):
+    """Reject wrong Go protocol/algorithm before replacing any installed software."""
+    require(path.is_file() and not path.is_symlink() and os.access(path, os.X_OK),
+            'vanillagen no es un ejecutable valido.')
+    try:
+        result = subprocess.run([str(path), '-version'], capture_output=True, text=True,
+                                timeout=8, check=False)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise UpdateError(f'vanillagen no pudo verificarse: {error}.') from error
+    require(result.returncode == 0 and
+            re.fullmatch(r'vanillagen [A-Za-z0-9.+_-]+ protocol 7 algorithm 4\s*',
+                         result.stdout) is not None,
+            'Version del ejecutable Go incompatible; se conserva la instalacion anterior.')
+
+
 def remove(path):
     if path.is_dir() and not path.is_symlink():
         shutil.rmtree(path)
@@ -305,7 +344,13 @@ def recover(root):
         shutil.rmtree(transaction)
         return
     entries = json.loads(journal.read_text())
-    require([e['target'] for e in entries] == list(TARGETS), 'Diario de recuperacion invalido.')
+    names = [e.get('target') for e in entries]
+    if names == list(TARGETS):
+        backups = BACKUPS
+    elif names == list(LEGACY_TARGETS):
+        backups = LEGACY_BACKUPS
+    else:
+        raise UpdateError('Diario de recuperacion invalido.')
     if (transaction / 'COMMITTED').exists():
         previous = root / '.ryzemp-backups/previous'
         if (transaction / 'old').exists():
@@ -314,7 +359,7 @@ def recover(root):
             os.replace(transaction / 'old', previous)
     else:
         for index, entry in reversed(list(enumerate(entries))):
-            destination, backup = root / entry['target'], transaction / 'old' / BACKUPS[index]
+            destination, backup = root / entry['target'], transaction / 'old' / backups[index]
             if backup.exists():
                 remove(destination)
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -379,7 +424,8 @@ def update(root, php_dir, startup, channel):
                     if installed.get('release') == state['release']:
                         require(installed['manifest_sha256'] == state['manifest_sha256'],
                                 'La release instalada fue modificada; publica una nueva release.')
-            print(f"[RyzeMP] Canal {channel}: {state['release']} + RyzeRTC {manifest['ryzertc']['tag']}", flush=True)
+            print(f"[RyzeMP] Canal {channel}: {state['release']} + RyzeRTC {manifest['ryzertc']['tag']}" +
+                  (" + vanillagen Go" if manifest.get('vanillagen') else " (worldgen PHP)"), flush=True)
             phar, rtc = stage / 'RyzeMP.phar', stage / 'runtime.zip'
             download(asset_url(MP, state['release'], manifest['phar']['asset']), phar, 100 * 1024 * 1024)
             require(sha(phar) == manifest['phar']['sha256'], 'SHA-256 del PHAR incorrecto; se conserva la instalacion.')
@@ -393,6 +439,19 @@ def update(root, php_dir, startup, channel):
             require_space(stage, php_bytes + 8 * 1024 * 1024, 'preparar PHP')
             shutil.copytree(php_dir, php, symlinks=True)
             validate(php, phar, runtime, native)
+            # Go stays outside PHAR; legacy schema 1 intentionally removes
+            # stale Go from the active set while keeping the rollback copy.
+            go_dir = stage / 'vanillagen'
+            go_dir.mkdir(mode=0o700)
+            go = manifest.get('vanillagen')
+            if go is not None:
+                binary = go_dir / GO_FILENAME
+                download(asset_url(MP, state['release'], go['asset']), binary, 64 * 1024 * 1024)
+                require(sha(binary) == go['sha256'], 'SHA-256 del ejecutable Go incorrecto; se conserva la instalacion.')
+                binary.chmod(0o700)
+                validate_go_binary(binary)
+                (go_dir / 'SHA256SUMS').write_text(go['sha256'] + '  ' + GO_FILENAME + '\n')
+                (go_dir / 'SHA256SUMS').chmod(0o600)
             start = stage / 'start-ryzemp.sh'
             shutil.copyfile(startup, start)
             start.chmod(0o755)
@@ -400,9 +459,10 @@ def update(root, php_dir, startup, channel):
             state['schema'] = 1
             state['phar'] = manifest['phar']
             state['ryzertc'] = native
+            state['vanillagen'] = go
             state_file = stage / 'state.json'
             write_json(state_file, state)
-            changed = commit(root, (start, php, runtime, phar, state_file))
+            changed = commit(root, (start, php, runtime, phar, go_dir, state_file))
             if changed:
                 print('[RyzeMP] Actualizacion verificada. Copia anterior: .ryzemp-backups/previous/', flush=True)
             return state
