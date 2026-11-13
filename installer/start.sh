@@ -46,6 +46,13 @@ if [[ -s .ryzemp-install.json ]] && grep -Eq '^[[:space:]]*"vanillagen"[[:space:
   exit 1
 fi
 if [[ -d .ryzemp-vanillagen ]]; then
+  if [[ -f .ryzemp-vanillagen/vanillagen-linux-amd64 && ! -L .ryzemp-vanillagen/vanillagen-linux-amd64 &&
+        ! -x .ryzemp-vanillagen/vanillagen-linux-amd64 && -s .ryzemp-vanillagen/SHA256SUMS ]]; then
+    # Files/SFTP uploads sometimes drop the executable bit. Verify before chmod.
+    if (cd .ryzemp-vanillagen && sha256sum -c --status SHA256SUMS); then
+      chmod 700 .ryzemp-vanillagen/vanillagen-linux-amd64
+    fi
+  fi
   if [[ -e .ryzemp-vanillagen/vanillagen-linux-amd64 ]]; then
     if [[ ! -x .ryzemp-vanillagen/vanillagen-linux-amd64 || ! -s .ryzemp-vanillagen/SHA256SUMS ]]; then
       echo '[RyzeMP] vanillagen incompleto o sin permisos. Reinstala el Egg.' >&2
