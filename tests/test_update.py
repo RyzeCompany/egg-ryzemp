@@ -448,8 +448,9 @@ class GoPreflightTests(unittest.TestCase):
             path = pathlib.Path(directory) / updater.GO_FILENAME
             path.write_bytes(b'elf-placeholder')
             path.chmod(0o700)
-            for stdout, valid in [('vanillagen dev protocol 7 algorithm 4\n', True),
-                                  ('vanillagen dev protocol 7 algorithm 5\n', False),
+            for stdout, valid in [('vanillagen v0.1.0 protocol 7 algorithm 4\n', True),
+                                  ('vanillagen dev protocol 7 algorithm 4\n', False),
+                                  ('vanillagen v0.1.0 protocol 7 algorithm 5\n', False),
                                   ('invalid', False)]:
                 with self.subTest(stdout=stdout), mock.patch.object(
                         updater.subprocess, 'run',
