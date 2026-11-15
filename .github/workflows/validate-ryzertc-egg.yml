@@ -49,7 +49,8 @@ jobs:
           assert 'RYZEMP_CHANNEL:-pruebas' in script
           assert data['variables'][0]['default_value']=='pruebas'
           assert any(v['env_variable']=='RYZEMP_VANILLA_WORLDGEN' and v['default_value']=='false' for v in data['variables'])
-          assert '--prepare-vanilla-worldgen' in start and 'RYZEMP_VANILLA_WORLDGEN' in start
+          assert 'RYZEMP_VANILLA_WORLDGEN' in start and 'world_vanilla_auto' in start
+          assert '--prepare-vanilla-worldgen' not in start and 'VanillaWorldgenSetup.php' not in start
           assert any(v['env_variable']=='RYZEMP_WORLDGEN_PROFILE' and v['default_value']=='false'
                      and 'true,false' in v['rules'] for v in data['variables'])
           assert any(v['env_variable']=='RYZEMP_PHP_JIT' and v['default_value']=='true'
