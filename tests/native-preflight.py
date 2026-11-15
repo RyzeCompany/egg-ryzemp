@@ -17,9 +17,9 @@ root = args.root.resolve()
 with tempfile.TemporaryDirectory() as temp:
     stage = pathlib.Path(temp)
     shutil.copytree(root / 'bin/php7', stage / 'php7', symlinks=True)
-    shutil.copytree(root / '.ryzertc-runtime', stage / 'runtime', symlinks=True)
+    shutil.copytree(root / 'bin/ryzemp/ryzertc', stage / 'runtime', symlinks=True)
     shutil.copyfile(root / 'RyzeMP.phar', stage / 'RyzeMP.phar')
-    rtc = json.loads((root / '.ryzemp-install.json').read_text())['ryzertc']
+    rtc = json.loads((root / 'bin/ryzemp/install.json').read_text())['ryzertc']
     updater.validate(stage / 'php7', stage / 'RyzeMP.phar', stage / 'runtime', rtc)
     for mode in ('api', 'phar'):
         if mode == 'phar':
