@@ -45,6 +45,11 @@ class UpdaterTests(unittest.TestCase):
         self.start = self.base / 'start.sh'
         self.start.write_text('#!/bin/bash\nnew-start\n')
         self.downloads = {}
+        self.official_go = b'official-RyzeVanillaGen-v0.1.0'
+        self.downloads[updater.asset_url(updater.GO_REPO, updater.GO_TAG, updater.GO_FILENAME)] = self.official_go
+        pinned_go = mock.patch.object(updater, 'GO_SHA256', checksum(self.official_go))
+        pinned_go.start()
+        self.addCleanup(pinned_go.stop)
         self.releases = []
         self.release('old', 10)
         self.release('new', 20)
@@ -126,12 +131,13 @@ class UpdaterTests(unittest.TestCase):
         for name in ('worlds/world/level.dat', 'plugins/test/config.yml', 'server.properties', 'nethernet/operator-key.pem'):
             self.assertEqual((self.root / name).read_bytes(), before[name])
         self.assertEqual((self.root / 'nethernet/operator-key.pem').stat().st_mode & 0o777, 0o600)
-        self.assertFalse((self.root / 'bin/ryzemp/vanillagen').exists(),
-                         'Schema-1 releases must not leave an empty Go directory')
+        self.assertEqual((self.root / 'bin/ryzemp/vanillagen' / updater.GO_FILENAME).read_bytes(),
+                         self.official_go, 'Schema-1 releases also install independent Go')
         self.assertFalse((self.root / '.ryzertc-runtime').exists())
         self.assertFalse((self.root / 'bin/ryzemp/nethernet').exists(),
                          'pm-nethernet must not be installed in the RyzeRTC-only Egg')
         self.validate.assert_called_once()
+        self.validate_go.assert_called_once()
 
 
     def test_schema1_removes_obsolete_empty_go_folder_without_touching_worlds(self):
@@ -139,7 +145,8 @@ class UpdaterTests(unittest.TestCase):
         before = (self.root / 'worlds/world/level.dat').read_bytes()
         self.install()
         self.assertFalse((self.root / '.ryzemp-vanillagen').exists())
-        self.assertFalse((self.root / 'bin/ryzemp/vanillagen').exists())
+        self.assertEqual((self.root / 'bin/ryzemp/vanillagen' / updater.GO_FILENAME).read_bytes(),
+                         self.official_go)
         self.assertEqual((self.root / 'worlds/world/level.dat').read_bytes(), before)
 
     def test_preserves_nonempty_legacy_go_in_a_single_software_folder(self):
@@ -168,31 +175,35 @@ class UpdaterTests(unittest.TestCase):
         state = self.install()
         self.assertEqual(state['release'], 'go')
         binary = self.root / 'bin/ryzemp/vanillagen' / updater.GO_FILENAME
-        self.assertEqual(binary.read_bytes(), b'synthetic-vanillagen-go')
+        self.assertEqual(binary.read_bytes(), self.official_go)
         self.assertEqual(binary.stat().st_mode & 0o777, 0o700)
         self.assertEqual((self.root / 'bin/ryzemp/vanillagen/SHA256SUMS').read_text(),
                          checksum(binary.read_bytes()) + '  ' + updater.GO_FILENAME + '\n')
         self.assertEqual(state['vanillagen']['protocol'], 7)
+        self.assertEqual(state['vanillagen']['repo'], updater.GO_REPO)
+        self.assertEqual(state['vanillagen']['tag'], updater.GO_TAG)
+        self.assertIn(updater.asset_url(updater.GO_REPO, updater.GO_TAG, updater.GO_FILENAME), self.calls)
         self.validate_go.assert_called_once()
         for name in ('worlds/world/level.dat', 'plugins/test/config.yml',
                      'server.properties', 'nethernet/operator-key.pem'):
             self.assertEqual((self.root / name).read_bytes(), before[name])
 
-    def test_schema1_update_disables_go_but_preserves_previous_binary(self):
+    def test_schema1_keeps_official_go_independent_of_phar_updates(self):
         self.release('go', 29, schema=2)
         self.install()
         self.release('later', 30, schema=1)
         state = self.install()
-        self.assertIsNone(state['vanillagen'])
-        self.assertFalse((self.root / 'bin/ryzemp/vanillagen' / updater.GO_FILENAME).exists())
+        self.assertEqual(state['vanillagen']['tag'], updater.GO_TAG)
+        self.assertEqual(state['vanillagen']['repo'], updater.GO_REPO)
+        self.assertEqual((self.root / 'bin/ryzemp/vanillagen' / updater.GO_FILENAME).read_bytes(),
+                         self.official_go)
         self.assertEqual((self.root / 'bin/ryzemp/backups/previous/vanillagen' /
-                          updater.GO_FILENAME).read_bytes(), b'synthetic-vanillagen-go')
+                          updater.GO_FILENAME).read_bytes(), self.official_go)
 
-    def test_schema2_bad_go_checksum_keeps_all_old_files(self):
-        self.release('go', 29, schema=2)
-        self.downloads[updater.asset_url(updater.MP, 'go', updater.GO_FILENAME)] = b'altered'
+    def test_official_go_checksum_mismatch_rolls_back_without_user_data_loss(self):
+        self.downloads[updater.asset_url(updater.GO_REPO, updater.GO_TAG, updater.GO_FILENAME)] = b'altered'
         before = self.snapshot()
-        with self.assertRaisesRegex(updater.UpdateError, 'SHA-256 del ejecutable Go'):
+        with self.assertRaisesRegex(updater.UpdateError, 'SHA-256 de la release oficial RyzeVanillaGen'):
             self.install()
         self.assertEqual(self.snapshot(), before)
 
