@@ -11,10 +11,8 @@ script = (root / 'installer/install.sh.in').read_text()
 for token, name in [('@@UPDATER@@', 'update.py'), ('@@START@@', 'start.sh')]:
     assert script.count(token) == 1
     script = script.replace(token, (root / 'installer' / name).read_text().rstrip())
-egg['description'] = ('RyzeMP con PHP 8.4 ZTS, RyzeRTC exclusivo para NetherNet y Go nativo '
-    'fuera del PHAR. Una sola carpeta bin/ryzemp, sin pm-nethernet ni directorios '
-    'Go vacios; reinstalar verifica SHA-256 y conserva mundos, plugins y respaldos.')
-egg['scripts']['installation']['script'] = script
+egg['description'] = ('RyzeMP con PHP 8.4 ZTS, RyzeRTC exclusivo para NetherNet y RyzeVanillaGen v0.1.0 externo con SHA-256 fijo. Unica carpeta bin/ryzemp, sin binarios dentro del PHAR; conserva mundos, plugins y respaldos.')
+
 egg['variables'] = [{
     'name': 'Canal de actualizaciones',
     'description': 'pruebas: ultima prerelease preparada; estable: ultima release estable preparada. Se aplica al reinstalar.',
