@@ -24,11 +24,25 @@ PLATFORM = {'os': 'linux', 'arch': 'x86_64', 'php': '8.4', 'php_api': 20240924, 
 # Recover transactions left by the previous RyzeRTC-only Egg as well.
 LEGACY_TARGETS = ('start-ryzemp.sh', 'bin/php7', '.ryzertc-runtime', 'RyzeMP.phar', '.ryzemp-install.json')
 LEGACY_BACKUPS = ('start-ryzemp.sh', 'php7', 'ryzertc-runtime', 'RyzeMP.phar', 'install.json')
-TARGETS = ('start-ryzemp.sh', 'bin/php7', '.ryzertc-runtime', 'RyzeMP.phar',
-           '.ryzemp-vanillagen', '.ryzemp-install.json')
-BACKUPS = ('start-ryzemp.sh', 'php7', 'ryzertc-runtime', 'RyzeMP.phar',
-           'vanillagen', 'install.json')
+PREVIOUS_TARGETS = ('start-ryzemp.sh', 'bin/php7', '.ryzertc-runtime', 'RyzeMP.phar',
+                    '.ryzemp-vanillagen', '.ryzemp-install.json')
+PREVIOUS_BACKUPS = ('start-ryzemp.sh', 'php7', 'ryzertc-runtime', 'RyzeMP.phar',
+                    'vanillagen', 'install.json')
+# Keep all software inside bin/; ordinary world, player and plugin data stay at server root.
+RUNTIME_ROOT = pathlib.Path('bin/ryzemp')
+STATE_FILE = RUNTIME_ROOT / 'install.json'
+BACKUP_ROOT = RUNTIME_ROOT / 'backups/previous'
+TRANSACTION_ROOT = RUNTIME_ROOT / 'update-transaction'
+TARGETS = ('start-ryzemp.sh', 'bin/php7', 'bin/ryzemp/ryzertc', 'RyzeMP.phar',
+           'bin/ryzemp/vanillagen', 'bin/ryzemp/nethernet', 'bin/ryzemp/install.json')
+BACKUPS = ('start-ryzemp.sh', 'php7', 'ryzertc', 'RyzeMP.phar',
+           'vanillagen', 'nethernet', 'install.json')
 GO_FILENAME = 'vanillagen-linux-amd64'
+BRIDGE_FILENAME = 'pm-nethernet-linux-amd64'
+BRIDGE_URL = ('https://gitlab.com/api/v4/projects/VanillaPocketMine%2Fnethernet/packages/'
+              'generic/pm-nethernet/0.1.2/' + BRIDGE_FILENAME)
+# Pinned upstream 0.1.2 checksummed by the RyzeMP native-build CI.
+BRIDGE_SHA256 = 'f79145ddb1c9a94258b59b539f71ceb79575c8d79a2726a2aa6418196c01a106'
 GO_PROTOCOL = 7
 GO_ALGORITHM = 4
 
@@ -70,7 +84,8 @@ def asset_url(repo, tag, name):
 
 def download(url, destination, limit):
     require(url.startswith(('https://api.github.com/repos/RyzeCompany/',
-                            'https://github.com/RyzeCompany/')), 'Origen de descarga no permitido.')
+                            'https://github.com/RyzeCompany/')) or url == BRIDGE_URL,
+            'Origen de descarga no permitido.')
     request = urllib.request.Request(url, headers={
         'User-Agent': 'RyzeMP-Pterodactyl-Updater/1', 'Accept': 'application/vnd.github+json'
         if url.startswith('https://api.github.com/') else 'application/octet-stream'})
@@ -284,7 +299,7 @@ def validate(php_dir, phar, runtime, rtc):
         if not re.match(r'\s*extension_dir\s*=', line) and not re.match(r'\s*extension\s*=.*ryzertc', line)]
     extension_dir = '/home/container/bin/php7/' + str(opcache[0].parent.relative_to(php_dir))
     ini.write_text('\n'.join(lines) + f'\nextension_dir="{extension_dir}"\n'
-        'extension="/home/container/.ryzertc-runtime/ryzertc.so"\n')
+        'extension="/home/container/bin/ryzemp/ryzertc/ryzertc.so"\n')
 
 
 
@@ -326,7 +341,9 @@ def write_json(path, value):
 
 
 def safe_targets(root):
-    for relative in (*TARGETS, '.ryzemp-backups/previous', '.ryzemp-update-transaction'):
+    for relative in (*TARGETS, str(BACKUP_ROOT), str(TRANSACTION_ROOT),
+                     '.ryzemp-backups/previous', '.ryzemp-update-transaction',
+                     '.ryzemp-vanillagen', '.ryzertc-runtime'):
         current = root
         for part in pathlib.PurePosixPath(relative).parts:
             current /= part
@@ -334,40 +351,64 @@ def safe_targets(root):
 
 
 def recover(root):
-    transaction = root / '.ryzemp-update-transaction'
-    if not transaction.exists():
-        return
-    journal = transaction / 'journal.json'
-    if not journal.exists():
-        require(all(p.name == 'journal.json.tmp' for p in transaction.iterdir()),
-                'Diario de actualizacion ausente; revisa .ryzemp-update-transaction.')
+    # Support interrupted installs produced by both earlier Egg layouts.
+    for relative in ('.ryzemp-update-transaction', str(TRANSACTION_ROOT)):
+        transaction = root / relative
+        if not transaction.exists():
+            continue
+        journal = transaction / 'journal.json'
+        if not journal.exists():
+            require(all(p.name == 'journal.json.tmp' for p in transaction.iterdir()),
+                    'Diario de actualizacion ausente; revisa el directorio de transaccion.')
+            shutil.rmtree(transaction)
+            continue
+        entries = json.loads(journal.read_text())
+        names = [e.get('target') for e in entries]
+        if names == list(TARGETS):
+            backups, previous = BACKUPS, root / BACKUP_ROOT
+        elif names == list(PREVIOUS_TARGETS):
+            backups, previous = PREVIOUS_BACKUPS, root / '.ryzemp-backups/previous'
+        elif names == list(LEGACY_TARGETS):
+            backups, previous = LEGACY_BACKUPS, root / '.ryzemp-backups/previous'
+        else:
+            raise UpdateError('Diario de recuperacion invalido.')
+        if (transaction / 'COMMITTED').exists():
+            if (transaction / 'old').exists():
+                previous.parent.mkdir(parents=True, exist_ok=True)
+                remove(previous)
+                os.replace(transaction / 'old', previous)
+        else:
+            for index, entry in reversed(list(enumerate(entries))):
+                destination, backup = root / entry['target'], transaction / 'old' / backups[index]
+                if backup.exists():
+                    remove(destination)
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(backup, destination)
+                elif entry['had_old'] is False:
+                    remove(destination)
+            print('[RyzeMP] Instalacion anterior recuperada.', flush=True)
         shutil.rmtree(transaction)
-        return
-    entries = json.loads(journal.read_text())
-    names = [e.get('target') for e in entries]
-    if names == list(TARGETS):
-        backups = BACKUPS
-    elif names == list(LEGACY_TARGETS):
-        backups = LEGACY_BACKUPS
-    else:
-        raise UpdateError('Diario de recuperacion invalido.')
-    if (transaction / 'COMMITTED').exists():
-        previous = root / '.ryzemp-backups/previous'
-        if (transaction / 'old').exists():
-            previous.parent.mkdir(exist_ok=True, mode=0o700)
-            remove(previous)
-            os.replace(transaction / 'old', previous)
-    else:
-        for index, entry in reversed(list(enumerate(entries))):
-            destination, backup = root / entry['target'], transaction / 'old' / backups[index]
-            if backup.exists():
-                remove(destination)
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(backup, destination)
-            elif entry['had_old'] is False:
-                remove(destination)
-        print('[RyzeMP] Instalacion anterior recuperada.', flush=True)
-    shutil.rmtree(transaction)
+
+
+def migrate_legacy_layout(root):
+    """Hide obsolete installer folders without deleting any nonempty user data."""
+    legacy = root / RUNTIME_ROOT / 'legacy'
+    for old, new in (('.ryzertc-runtime', 'ryzertc'),
+                     ('.ryzemp-vanillagen', 'vanillagen'),
+                     ('.ryzemp-backups', 'backups'),
+                     ('.ryzemp-install.json', 'install.json')):
+        path = root / old
+        if not path.exists() or path.is_symlink():
+            continue
+        if path.is_dir() and not any(path.iterdir()):
+            path.rmdir()
+            continue
+        legacy.mkdir(parents=True, exist_ok=True)
+        destination = legacy / new
+        if not destination.exists():
+            os.replace(path, destination)
+        else:
+            print(f'[RyzeMP] Se conservo {old}: ya hay una copia anterior.', flush=True)
 
 
 def signature(path):
@@ -381,12 +422,13 @@ def signature(path):
 
 
 def commit(root, prepared):
-    # Identical reinstalls must retain the last useful backup.
-    if all(signature(root / target) == signature(source) for target, source in zip(TARGETS, prepared)):
+    # A release without Go has no Go directory. None removes a previous binary transactionally.
+    if all(signature(root / target) == (signature(source) if source is not None else None)
+           for target, source in zip(TARGETS, prepared)):
         print('[RyzeMP] La ultima release ya esta instalada y verificada.', flush=True)
         return False
-    transaction = root / '.ryzemp-update-transaction'
-    transaction.mkdir(mode=0o700)
+    transaction = root / TRANSACTION_ROOT
+    transaction.mkdir(parents=True, mode=0o700)
     entries = [{'target': target, 'had_old': (root / target).exists()} for target in TARGETS]
     write_json(transaction / 'journal.json', entries)
     (transaction / 'old').mkdir()
@@ -396,7 +438,8 @@ def commit(root, prepared):
             destination.parent.mkdir(parents=True, exist_ok=True)
             if entries[index]['had_old']:
                 os.replace(destination, transaction / 'old' / BACKUPS[index])
-            os.replace(source, destination)
+            if source is not None:
+                os.replace(source, destination)
         write_json(transaction / 'COMMITTED', True)
     except BaseException:
         recover(root)
@@ -408,14 +451,17 @@ def commit(root, prepared):
 def update(root, php_dir, startup, channel):
     root = root.resolve()
     safe_targets(root)
-    descriptor = os.open(root / '.ryzemp-update.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    (root / RUNTIME_ROOT).mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(root / RUNTIME_ROOT / 'update.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         recover(root)
         with tempfile.TemporaryDirectory(prefix='.ryzemp-stage.', dir=root) as temp:
             stage = pathlib.Path(temp)
             manifest, state = select_release(channel, stage)
-            old = root / '.ryzemp-install.json'
+            old = root / STATE_FILE
+            if not old.exists():
+                old = root / '.ryzemp-install.json'
             if old.exists():
                 installed = json.loads(old.read_text())
                 if installed.get('channel') == channel:
@@ -439,12 +485,11 @@ def update(root, php_dir, startup, channel):
             require_space(stage, php_bytes + 8 * 1024 * 1024, 'preparar PHP')
             shutil.copytree(php_dir, php, symlinks=True)
             validate(php, phar, runtime, native)
-            # Go stays outside PHAR; legacy schema 1 intentionally removes
-            # stale Go from the active set while keeping the rollback copy.
-            go_dir = stage / 'vanillagen'
-            go_dir.mkdir(mode=0o700)
+            # Do not create an empty vanillagen directory for schema-1 releases.
             go = manifest.get('vanillagen')
-            if go is not None:
+            go_dir = stage / 'vanillagen' if go is not None else None
+            if go_dir is not None:
+                go_dir.mkdir(mode=0o700)
                 binary = go_dir / GO_FILENAME
                 download(asset_url(MP, state['release'], go['asset']), binary, 64 * 1024 * 1024)
                 require(sha(binary) == go['sha256'], 'SHA-256 del ejecutable Go incorrecto; se conserva la instalacion.')
@@ -452,6 +497,15 @@ def update(root, php_dir, startup, channel):
                 validate_go_binary(binary)
                 (go_dir / 'SHA256SUMS').write_text(go['sha256'] + '  ' + GO_FILENAME + '\n')
                 (go_dir / 'SHA256SUMS').chmod(0o600)
+            bridge_dir = stage / 'nethernet'
+            bridge_dir.mkdir(mode=0o700)
+            bridge = bridge_dir / BRIDGE_FILENAME
+            download(BRIDGE_URL, bridge, 64 * 1024 * 1024)
+            require(sha(bridge) == BRIDGE_SHA256,
+                    'SHA-256 del puente NetherNet incorrecto; se conserva la instalacion.')
+            bridge.chmod(0o700)
+            (bridge_dir / 'SHA256SUMS').write_text(BRIDGE_SHA256 + '  ' + BRIDGE_FILENAME + '\n')
+            (bridge_dir / 'SHA256SUMS').chmod(0o600)
             start = stage / 'start-ryzemp.sh'
             shutil.copyfile(startup, start)
             start.chmod(0o755)
@@ -462,9 +516,12 @@ def update(root, php_dir, startup, channel):
             state['vanillagen'] = go
             state_file = stage / 'state.json'
             write_json(state_file, state)
-            changed = commit(root, (start, php, runtime, phar, go_dir, state_file))
+            changed = commit(root, (start, php, runtime, phar, go_dir, bridge_dir, state_file))
+            migrate_legacy_layout(root)
             if changed:
-                print('[RyzeMP] Actualizacion verificada. Copia anterior: .ryzemp-backups/previous/', flush=True)
+                print('[RyzeMP] Actualizacion verificada. Copia anterior: bin/ryzemp/backups/previous/', flush=True)
+            if go is None:
+                print('[RyzeMP] Esta release no publica vanillagen. No se crea una carpeta Go vacia.', flush=True)
             return state
 
 
