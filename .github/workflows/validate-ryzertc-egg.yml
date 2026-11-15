@@ -49,7 +49,8 @@ jobs:
           assert 'RYZEMP_CHANNEL:-pruebas' in script
           assert data['variables'][0]['default_value']=='pruebas'
           assert any(v['env_variable']=='RYZEMP_VANILLA_WORLDGEN' and v['default_value']=='false' for v in data['variables'])
-          assert '--prepare-vanilla-worldgen' in start and 'RYZEMP_VANILLA_WORLDGEN' in start
+          assert 'RYZEMP_VANILLA_WORLDGEN' in start and 'world_vanilla_auto' in start
+          assert '--prepare-vanilla-worldgen' not in start and 'VanillaWorldgenSetup.php' not in start
           assert any(v['env_variable']=='RYZEMP_WORLDGEN_PROFILE' and v['default_value']=='false'
                      and 'true,false' in v['rules'] for v in data['variables'])
           assert any(v['env_variable']=='RYZEMP_PHP_JIT' and v['default_value']=='true'
@@ -118,6 +119,29 @@ jobs:
           grep -q 'NetherNet READY:' .ci-server/startup.log
           if grep -Eiq 'Fatal error|Uncaught|CRITICAL|EMERGENCY' .ci-server/startup.log; then
             echo 'RyzeMP PHAR reported a fatal startup error' >&2
+            exit 1
+          fi
+      - name: Regression - enabling Vanilla option must not crash on beta.6
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          docker run --rm --tmpfs /tmp:rw,exec,nosuid,size=64m --entrypoint /bin/bash \
+            -e RYZEMP_VANILLA_WORLDGEN=true \
+            -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
+            -w /home/container ghcr.io/ptero-eggs/yolks:debian \
+            -c 'timeout 25s ./start-ryzemp.sh' > .ci-server/startup-vanilla-auto.log 2>&1
+          status=$?
+          set -e
+          tail -n 45 .ci-server/startup-vanilla-auto.log
+          if [[ "$status" != 0 && "$status" != 124 ]]; then
+            echo 'Vanilla opt-in caused an unexpected startup failure' >&2
+            exit 1
+          fi
+          grep -q 'RyzeRTC .* cargado' .ci-server/startup-vanilla-auto.log
+          grep -Eq 'Vanilla auto habilitado|Aviso: el PHAR instalado es anterior' .ci-server/startup-vanilla-auto.log
+          if grep -Eq 'Este PHAR no incluye la preparacion automatica Vanilla|Instala el PHAR actualizado del PR #60' .ci-server/startup-vanilla-auto.log; then
+            echo 'Legacy Vanilla preflight is still rejecting a valid PHAR' >&2
             exit 1
           fi
       - name: Verify PHP JIT can be disabled without reinstalling
@@ -227,6 +251,7 @@ jobs:
           path: |
             .ci-server/startup.log
             .ci-server/startup-jit-off.log
+            .ci-server/startup-vanilla-auto.log
             .ci-server/network-startup.log
             .ci-server/limited-tmp-regression.log
           retention-days: 2
