@@ -2,7 +2,7 @@
 set -euo pipefail
 cd /home/container
 
-if [[ -d .ryzemp-update-transaction ]]; then
+if [[ -d bin/ryzemp/update-transaction || -d .ryzemp-update-transaction ]]; then
   echo '[RyzeMP] La actualizacion fue interrumpida. Reinstala para recuperar la instalacion anterior.' >&2
   exit 1
 fi
@@ -40,29 +40,29 @@ fi
 unset RYZEMP_VANILLAGEN_BINARY RYZEMP_VANILLAGEN_SHA256 RYZEMP_VANILLAGEN_STAGE
 # A schema-2 release requires its native executable. Do not silently run
 # an unaccelerated world because the native directory was lost.
-if [[ -s .ryzemp-install.json ]] && grep -Eq '^[[:space:]]*"vanillagen"[[:space:]]*:[[:space:]]*\{' .ryzemp-install.json && \
-    [[ ! -x .ryzemp-vanillagen/vanillagen-linux-amd64 ]]; then
-  echo '[RyzeMP] Esta release requiere Go pero falta el binario. Reinstala el Egg.' >&2
+if [[ -s bin/ryzemp/install.json ]] && grep -Eq '^[[:space:]]*"vanillagen"[[:space:]]*:[[:space:]]*\{' bin/ryzemp/install.json && \
+    [[ ! -x bin/ryzemp/vanillagen/vanillagen-linux-amd64 ]]; then
+  echo '[RyzeMP] Esta release declara Go pero falta su ejecutable externo. Reinstala el Egg.' >&2
   exit 1
 fi
-if [[ -d .ryzemp-vanillagen ]]; then
-  if [[ -f .ryzemp-vanillagen/vanillagen-linux-amd64 && ! -L .ryzemp-vanillagen/vanillagen-linux-amd64 &&
-        ! -x .ryzemp-vanillagen/vanillagen-linux-amd64 && -s .ryzemp-vanillagen/SHA256SUMS ]]; then
+if [[ -d bin/ryzemp/vanillagen ]]; then
+  if [[ -f bin/ryzemp/vanillagen/vanillagen-linux-amd64 && ! -L bin/ryzemp/vanillagen/vanillagen-linux-amd64 &&
+        ! -x bin/ryzemp/vanillagen/vanillagen-linux-amd64 && -s bin/ryzemp/vanillagen/SHA256SUMS ]]; then
     # Files/SFTP uploads sometimes drop the executable bit. Verify before chmod.
-    if (cd .ryzemp-vanillagen && sha256sum -c --status SHA256SUMS); then
-      chmod 700 .ryzemp-vanillagen/vanillagen-linux-amd64
+    if (cd bin/ryzemp/vanillagen && sha256sum -c --status SHA256SUMS); then
+      chmod 700 bin/ryzemp/vanillagen/vanillagen-linux-amd64
     fi
   fi
-  if [[ -e .ryzemp-vanillagen/vanillagen-linux-amd64 ]]; then
-    if [[ ! -x .ryzemp-vanillagen/vanillagen-linux-amd64 || ! -s .ryzemp-vanillagen/SHA256SUMS ]]; then
+  if [[ -e bin/ryzemp/vanillagen/vanillagen-linux-amd64 ]]; then
+    if [[ ! -x bin/ryzemp/vanillagen/vanillagen-linux-amd64 || ! -s bin/ryzemp/vanillagen/SHA256SUMS ]]; then
       echo '[RyzeMP] vanillagen incompleto o sin permisos. Reinstala el Egg.' >&2
       exit 1
     fi
-    if ! (cd .ryzemp-vanillagen && sha256sum -c --status SHA256SUMS); then
+    if ! (cd bin/ryzemp/vanillagen && sha256sum -c --status SHA256SUMS); then
       echo '[RyzeMP] vanillagen no paso la verificacion SHA-256. Reinstala el Egg.' >&2
       exit 1
     fi
-    export RYZEMP_VANILLAGEN_BINARY=/home/container/.ryzemp-vanillagen/vanillagen-linux-amd64
+    export RYZEMP_VANILLAGEN_BINARY=/home/container/bin/ryzemp/vanillagen/vanillagen-linux-amd64
     export RYZEMP_VANILLAGEN_SHA256="$(sha256sum "$RYZEMP_VANILLAGEN_BINARY" | cut -d ' ' -f1)"
     export RYZEMP_VANILLAGEN_STAGE=full
     echo '[RyzeMP] Go nativo verificado (terrain, materiales y carvers); respaldo PHP disponible.'
@@ -72,11 +72,19 @@ if [[ -d .ryzemp-vanillagen ]]; then
 fi
 
 # Cargar la biblioteca nativa desde su directorio separado del PHAR.
-if [[ ! -s ./.ryzertc-runtime/ryzertc.so || ! -s ./.ryzertc-runtime/lib/libdatachannel.so.0.24 ]]; then
+if [[ ! -s ./bin/ryzemp/ryzertc/ryzertc.so || ! -s ./bin/ryzemp/ryzertc/lib/libdatachannel.so.0.24 ]]; then
   echo '[RyzeMP] Falta RyzeRTC. Reinstala el Egg para descargar la release oficial.' >&2
   exit 1
 fi
-export LD_LIBRARY_PATH="/home/container/.ryzertc-runtime/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="/home/container/bin/ryzemp/ryzertc/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# Every distributed helper is outside the PHAR and verified on every start.
+if [[ ! -x bin/ryzemp/nethernet/pm-nethernet-linux-amd64 || ! -s bin/ryzemp/nethernet/SHA256SUMS ]] ||
+   ! (cd bin/ryzemp/nethernet && sha256sum -c --status SHA256SUMS); then
+  echo '[RyzeMP] El ejecutable externo pm-nethernet falta o tiene un SHA-256 invalido. Reinstala el Egg.' >&2
+  exit 1
+fi
+export RYZEMP_NETHERNET_BINARY=/home/container/bin/ryzemp/nethernet/pm-nethernet-linux-amd64
 # El mismo php.ini sera utilizado por los procesos hijos, incluido ConsoleReader.
 export PHPRC=/home/container/bin/php7/bin
 mkdir -p ./tmp
