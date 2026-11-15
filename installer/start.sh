@@ -129,25 +129,31 @@ if ! ./bin/php7/bin/php "${jit_php_args[@]}" -r '
   echo '[RyzeMP] Arranque detenido: RyzeRTC no esta disponible.' >&2
   exit 1
 fi
-# Opt-in bootstraps the data locally and prepares a NEW world before starting RyzeMP.
-# Never silently create a PocketMine world when the vanilla PHP CLI is absent.
-if [[ "$(printenv RYZEMP_VANILLA_WORLDGEN || true)" == "true" ]]; then
-  if ! ./bin/php7/bin/php "${jit_php_args[@]}" -r '
-    try {
-      $phar = new Phar("RyzeMP.phar");
-      if (!isset($phar["src/world/generator/vanilla/VanillaWorldgenSetup.php"])) exit(1);
-    } catch (Throwable $e) { exit(1); }
-  '; then
-    echo '[RyzeMP] Este PHAR no incluye la preparacion automatica Vanilla. Instala el PHAR actualizado del PR #60.' >&2
+# The Vanilla data fetcher is already part of RyzeMP: it prepares the
+# Java worldgen cache automatically when a Vanilla world is created or loaded.
+# Do not call the removed --prepare-vanilla-worldgen CLI or require its old PHP class.
+# New RyzeMP builds consume RYZEMP_VANILLA_WORLDGEN on startup to provision a
+# separate, safe Vanilla world; older releases (including beta.6) may not.
+case "${RYZEMP_VANILLA_WORLDGEN:-false}" in
+  true)
+    if ./bin/php7/bin/php "${jit_php_args[@]}" -r '
+      try {
+        $phar = new Phar("RyzeMP.phar");
+        if (!isset($phar["src/Server.php"]) ||
+            !str_contains($phar["src/Server.php"]->getContent(), "world_vanilla_auto")) exit(1);
+      } catch (Throwable $e) { exit(1); }
+    ' >/dev/null 2>&1; then
+      echo '[RyzeMP] Vanilla auto habilitado: RyzeMP preparara los datos y creara un mundo nuevo cuando sea necesario. Mundos actuales intactos.'
+    else
+      echo '[RyzeMP] Aviso: el PHAR instalado es anterior a la creacion automatica de mundos Vanilla del Egg. Se iniciara normalmente; la opcion no creara un mundo adicional hasta publicar una version compatible.' >&2
+    fi
+    ;;
+  false)
+    ;;
+  *)
+    echo '[RyzeMP] RYZEMP_VANILLA_WORLDGEN debe ser true o false.' >&2
     exit 1
-  fi
-  if ! command -v tar >/dev/null 2>&1; then
-    echo '[RyzeMP] Falta tar en el contenedor; se necesita para preparar Java 26.3.' >&2
-    exit 1
-  fi
-  echo '[RyzeMP] Preparando/verificando datos Java 26.3. No se necesita HASH_REAL ni consola Linux.'
-  ./bin/php7/bin/php "${jit_php_args[@]}" -d memory_limit=2G -d "sys_temp_dir=$TMPDIR" ./RyzeMP.phar --prepare-vanilla-worldgen
-fi
-
+    ;;
+esac
 echo '[RyzeMP] Red: publica TCP y UDP en la misma asignacion server-port. El Egg no abre el firewall de Wings.'
 exec ./bin/php7/bin/php "${jit_php_args[@]}" -d "sys_temp_dir=$TMPDIR" ./RyzeMP.phar --no-wizard --enable-ansi --settings.enable-dev-builds=1
