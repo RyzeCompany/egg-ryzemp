@@ -52,6 +52,11 @@ jobs:
           assert '--prepare-vanilla-worldgen' in start and 'RYZEMP_VANILLA_WORLDGEN' in start
           assert any(v['env_variable']=='RYZEMP_WORLDGEN_PROFILE' and v['default_value']=='false'
                      and 'true,false' in v['rules'] for v in data['variables'])
+          assert any(v['env_variable']=='RYZEMP_PHP_JIT' and v['default_value']=='true'
+                     and v['user_editable'] and 'true,false' in v['rules'] for v in data['variables'])
+          assert 'opcache.enable_cli=1' in start and 'opcache.jit=tracing' in start
+          assert 'opcache.jit_buffer_size=64M' in start and 'opcache.jit=disable' in start
+          assert 'opcache.jit_buffer_size=0' in start and 'RYZEMP_PHP_JIT:-true' in start
           assert 'ryzertc.so' in script and 'LD_LIBRARY_PATH' in start
           assert 'sys_temp_dir=$TMPDIR' in start and './RyzeMP.phar --no-wizard' in start
           for forbidden in ('nethernet-enabled=', 'nethernet-ice-port=', 'Amber-PM', 'ext-rtc', '19134'):
@@ -109,9 +114,33 @@ jobs:
             exit 1
           fi
           grep -q 'RyzeRTC .* cargado' .ci-server/startup.log
+          grep -Fq 'PHP JIT activo (tracing, 64M)' .ci-server/startup.log
           grep -q 'NetherNet READY:' .ci-server/startup.log
           if grep -Eiq 'Fatal error|Uncaught|CRITICAL|EMERGENCY' .ci-server/startup.log; then
             echo 'RyzeMP PHAR reported a fatal startup error' >&2
+            exit 1
+          fi
+      - name: Verify PHP JIT can be disabled without reinstalling
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          docker run --rm --tmpfs /tmp:rw,exec,nosuid,size=64m --entrypoint /bin/bash \
+            -e RYZEMP_PHP_JIT=false \
+            -v "$GITHUB_WORKSPACE/.ci-server:/home/container" \
+            -w /home/container ghcr.io/ptero-eggs/yolks:debian \
+            -c 'timeout 25s ./start-ryzemp.sh' > .ci-server/startup-jit-off.log 2>&1
+          status=$?
+          set -e
+          tail -n 35 .ci-server/startup-jit-off.log
+          if [[ "$status" != 0 && "$status" != 124 ]]; then
+            echo 'RyzeMP crashed with JIT explicitly disabled' >&2
+            exit 1
+          fi
+          grep -Fq 'PHP JIT desactivado por RYZEMP_PHP_JIT=false' .ci-server/startup-jit-off.log
+          grep -q 'NetherNet READY:' .ci-server/startup-jit-off.log
+          if grep -Eiq 'Fatal error|Uncaught|CRITICAL|EMERGENCY' .ci-server/startup-jit-off.log; then
+            echo 'RyzeMP reported a fatal error without JIT' >&2
             exit 1
           fi
       - name: Verify same TCP and UDP allocation with authenticated HTTP and RakNet
@@ -197,6 +226,7 @@ jobs:
           name: RyzeMP-Egg-native-startup-logs-${{ github.run_attempt }}
           path: |
             .ci-server/startup.log
+            .ci-server/startup-jit-off.log
             .ci-server/network-startup.log
             .ci-server/limited-tmp-regression.log
           retention-days: 2

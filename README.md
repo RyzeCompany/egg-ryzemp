@@ -2,6 +2,23 @@
 
 **Reinstalar actualiza RyzeMP desde las releases oficiales**, verifica los archivos y conserva mundos, plugins, configuración y la identidad NetherNet. PHP y RyzeRTC se preparan antes de sustituir la instalación. El módulo nativo y sus bibliotecas permanecen fuera de `RyzeMP.phar`.
 
+## PHP 8.4 JIT activo por defecto (reversible)
+
+El Egg ahora inicia el **proceso PHP del servidor** con OPcache CLI y **JIT tracing (64 MiB)** activos de forma predeterminada. No cambia el PHAR, no descarga extensiones nuevas y no requiere puertos adicionales. En la pestaña **Startup** aparece la variable **PHP JIT (tracing, 64 MiB)**:
+
+| `RYZEMP_PHP_JIT` | Comportamiento |
+|---|---|
+| `true` (valor predeterminado) | Se intenta activar OPcache CLI y JIT `tracing` con buffer de 64 MiB. |
+| `false` | Se inicia PHP sin JIT; basta reiniciar el servidor. |
+
+En el arranque aparece `[RyzeMP] PHP JIT activo (tracing, 64M)` cuando la comprobación del PHP real confirma su activación. Si JIT no está disponible o no se inicializa, el lanzador **avisa y continúa sin JIT**; nunca afirma que esté activo si no lo está. Utiliza `/version runtime` en un PHAR que incluya el PR #65 para consultar el estado desde dentro del proceso.
+
+Para aplicarlo a un servidor existente, importa el nuevo `egg-ryze-m-p.json` en el Egg del panel. Como el script `start-ryzemp.sh` forma parte de la instalación, después ejecuta **Reinstalar** una sola vez; el actualizador transaccional conserva mundos, plugins, `server.properties` e identidad NetherNet. **No realiza una nueva publicación de RyzeMP** ni convierte automáticamente un PR fusionado en una release: seguirá seleccionando la release oficial preparada del canal.
+
+JIT puede mejorar algunos bucles PHP intensivos, pero no acelera directamente RyzeVanillaGen en Go, LevelDB ni RyzeRTC nativo. Consume RAM adicional y debe medirse bajo carga real (TPS, tick p95 y memoria); si observas errores o regresiones, cambia `RYZEMP_PHP_JIT=false` en Startup y reinicia, sin reinstalar.
+
+Referencia: https://www.php.net/manual/en/opcache.configuration.php
+
 ## Instalacion limpia: una sola carpeta de componentes
 
 El nuevo Egg mantiene `RyzeMP.phar` y `start-ryzemp.sh` en la raiz, pero agrupa los componentes internos en `bin/ryzemp/`: `ryzertc/`, `vanillagen/` (siempre desde RyzeVanillaGen), `backups/previous/` y `install.json`. PHP sigue en `bin/php7/`; la clave de confianza `nethernet/operator-key.pem` no se mueve.

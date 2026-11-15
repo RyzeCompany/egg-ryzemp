@@ -11,7 +11,7 @@ script = (root / 'installer/install.sh.in').read_text()
 for token, name in [('@@UPDATER@@', 'update.py'), ('@@START@@', 'start.sh')]:
     assert script.count(token) == 1
     script = script.replace(token, (root / 'installer' / name).read_text().rstrip())
-egg['description'] = ('RyzeMP con PHP 8.4 ZTS, RyzeRTC exclusivo para NetherNet y RyzeVanillaGen v0.1.0 externo con SHA-256 fijo. Unica carpeta bin/ryzemp, sin binarios dentro del PHAR; conserva mundos, plugins y respaldos.')
+egg['description'] = ('RyzeMP con PHP 8.4 ZTS y JIT tracing activado por defecto (opcional), RyzeRTC exclusivo para NetherNet y RyzeVanillaGen v0.1.0 externo con SHA-256 fijo. Unica carpeta bin/ryzemp, sin binarios dentro del PHAR; conserva mundos, plugins y respaldos.')
 egg['scripts']['installation']['script'] = script
 
 egg['variables'] = [{
@@ -30,6 +30,12 @@ egg['variables'] = [{
     'name': 'Perfil de rendimiento de chunks (beta)',
     'description': 'true: registra resúmenes de colas, generación, validación y envío inicial de chunks. No registra nombres ni coordenadas. Desactivado por defecto.',
     'env_variable': 'RYZEMP_WORLDGEN_PROFILE', 'default_value': 'false',
+    'user_viewable': True, 'user_editable': True,
+    'rules': 'required|string|in:true,false', 'field_type': 'text',
+}, {
+    'name': 'PHP JIT (tracing, 64 MiB)',
+    'description': 'true (predeterminado): activa PHP 8.4 CLI JIT tracing con buffer de 64 MiB. false: desactiva JIT sin reinstalar. Si no se puede iniciar, el lanzador continua sin JIT para evitar caidas.',
+    'env_variable': 'RYZEMP_PHP_JIT', 'default_value': 'true',
     'user_viewable': True, 'user_editable': True,
     'rules': 'required|string|in:true,false', 'field_type': 'text',
 }]

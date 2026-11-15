@@ -91,8 +91,35 @@ if ! ./bin/php7/bin/php -r 'if(!extension_loaded("Zend OPcache")){fwrite(STDERR,
   exit 1
 fi
 
+# PHP 8.4 desactiva JIT por defecto. Activarlo solamente en los
+# procesos del servidor (CLI), sin alterar php.ini, PHP ni el PHAR.
+# Si falla la inicializacion, se usa el interprete PHP normal.
+jit_php_args=(-d opcache.enable_cli=1)
+case "${RYZEMP_PHP_JIT:-true}" in
+  true)
+    jit_php_args+=(-d opcache.jit_buffer_size=64M -d opcache.jit=tracing)
+    if ./bin/php7/bin/php "${jit_php_args[@]}" -r '
+      $status = function_exists("opcache_get_status") ? opcache_get_status(false) : false;
+      if (!is_array($status) || ($status["jit"]["on"] ?? false) !== true) exit(1);
+    ' >/dev/null 2>&1; then
+      echo '[RyzeMP] PHP JIT activo (tracing, 64M) para el proceso del servidor.'
+    else
+      echo '[RyzeMP] Aviso: PHP JIT no se pudo inicializar; se continuara sin JIT.' >&2
+      jit_php_args=(-d opcache.enable_cli=1 -d opcache.jit_buffer_size=0 -d opcache.jit=disable)
+    fi
+    ;;
+  false)
+    jit_php_args+=(-d opcache.jit_buffer_size=0 -d opcache.jit=disable)
+    echo '[RyzeMP] PHP JIT desactivado por RYZEMP_PHP_JIT=false.'
+    ;;
+  *)
+    echo '[RyzeMP] RYZEMP_PHP_JIT debe ser true o false.' >&2
+    exit 1
+    ;;
+esac
+
 # Verificar carga real del modulo bajo el mismo php.ini y las mismas librerias.
-if ! ./bin/php7/bin/php -r '
+if ! ./bin/php7/bin/php "${jit_php_args[@]}" -r '
   if (!extension_loaded("ryzertc") || !class_exists("RyzeRTC\\Runtime") || RyzeRTC\Runtime::apiVersion() < 2) {
     fwrite(STDERR, "[RyzeMP] No se pudo cargar ryzertc.so. Comprueba php.ini, ABI y librerias.\n");
     exit(1);
@@ -105,7 +132,7 @@ fi
 # Opt-in bootstraps the data locally and prepares a NEW world before starting RyzeMP.
 # Never silently create a PocketMine world when the vanilla PHP CLI is absent.
 if [[ "$(printenv RYZEMP_VANILLA_WORLDGEN || true)" == "true" ]]; then
-  if ! ./bin/php7/bin/php -r '
+  if ! ./bin/php7/bin/php "${jit_php_args[@]}" -r '
     try {
       $phar = new Phar("RyzeMP.phar");
       if (!isset($phar["src/world/generator/vanilla/VanillaWorldgenSetup.php"])) exit(1);
@@ -119,8 +146,8 @@ if [[ "$(printenv RYZEMP_VANILLA_WORLDGEN || true)" == "true" ]]; then
     exit 1
   fi
   echo '[RyzeMP] Preparando/verificando datos Java 26.3. No se necesita HASH_REAL ni consola Linux.'
-  ./bin/php7/bin/php -d memory_limit=2G -d "sys_temp_dir=$TMPDIR" ./RyzeMP.phar --prepare-vanilla-worldgen
+  ./bin/php7/bin/php "${jit_php_args[@]}" -d memory_limit=2G -d "sys_temp_dir=$TMPDIR" ./RyzeMP.phar --prepare-vanilla-worldgen
 fi
 
 echo '[RyzeMP] Red: publica TCP y UDP en la misma asignacion server-port. El Egg no abre el firewall de Wings.'
-exec ./bin/php7/bin/php -d "sys_temp_dir=$TMPDIR" ./RyzeMP.phar --no-wizard --enable-ansi --settings.enable-dev-builds=1
+exec ./bin/php7/bin/php "${jit_php_args[@]}" -d "sys_temp_dir=$TMPDIR" ./RyzeMP.phar --no-wizard --enable-ansi --settings.enable-dev-builds=1
