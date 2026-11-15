@@ -4,9 +4,9 @@
 
 ## Instalacion limpia: una sola carpeta de componentes
 
-El nuevo Egg mantiene `RyzeMP.phar` y `start-ryzemp.sh` en la raiz, pero agrupa los componentes internos en `bin/ryzemp/`: `ryzertc/`, `vanillagen/` (solo en releases con Go), `backups/previous/` y `install.json`. PHP sigue en `bin/php7/`; la clave de confianza `nethernet/operator-key.pem` no se mueve.
+El nuevo Egg mantiene `RyzeMP.phar` y `start-ryzemp.sh` en la raiz, pero agrupa los componentes internos en `bin/ryzemp/`: `ryzertc/`, `vanillagen/` (siempre desde RyzeVanillaGen), `backups/previous/` y `install.json`. PHP sigue en `bin/php7/`; la clave de confianza `nethernet/operator-key.pem` no se mueve.
 
-La nueva instalacion descarga exclusivamente RyzeRTC como motor NetherNet; no instala `pm-nethernet`. `vanillagen` solo se instala desde una release preparada con manifiesto schema 2. **La ultima prerelease beta.5 tiene schema 1, por lo que no incluye Go**: el Egg deja de crear una carpeta de Go vacia y muestra el motivo en la instalacion. No se puede generar Go a partir de un PHAR antiguo: se necesita una release Go verificada.
+La nueva instalacion descarga exclusivamente RyzeRTC como motor NetherNet; no instala `pm-nethernet`. `vanillagen` se instala **siempre** desde [RyzeVanillaGen v0.1.0](https://github.com/RyzeCompany/RyzeVanillaGen/releases/tag/v0.1.0), con SHA-256 fijado, protocolo 7 y algoritmo 4. Ya no depende del manifiesto ni de los PR de RyzeMP. La beta.5 puede ignorar Go porque su PHAR es anterior a la integración.
 
 Tras una instalacion correcta, el Egg traslada los antiguos directorios ocultos `.ryzertc-runtime`, `.ryzemp-vanillagen`, `.ryzemp-backups` y el viejo registro hacia `bin/ryzemp/legacy/` para conservar su contenido sin saturar la raiz. Las carpetas antiguas vacias se eliminan; si hubiera una copia anterior con el mismo nombre, se conserva sin sobrescribir. **No elimina mundos, plugins, archivos de usuario ni las claves de identidad.** No borres manualmente `bin/ryzemp/legacy/` sin revisar sus respaldos.
 
@@ -21,7 +21,7 @@ La compilacion del PR #63 de RyzeMP elimina el puente pm-nethernet y mantiene Ry
 5. Pulsa **Reinstalar** en el servidor. Esta vez reemplazará el PHAR anterior por la última prerelease preparada y cargará el RyzeRTC que esa versión necesita.
 6. Inicia el servidor y comprueba la versión instalada y `NetherNet READY`.
 
-La ultima prerelease preparada al incorporar Go al Egg es [RyzeMP v1.0.0-beta.5](https://github.com/RyzeCompany/RyzeMP/releases/tag/v1.0.0-beta.5), con RyzeRTC API 2 y generacion PHP. SHA-256 del PHAR: `c67173111ab59e3b6baf8c1ed51a89d7eabe9c6b3a1578104670f4a8b5938c44`. La futura release de Go necesitara un tag y un manifiesto schema 2 nuevos. El canal selecciona su manifiesto automaticamente.
+La ultima prerelease preparada al incorporar Go al Egg es [RyzeMP v1.0.0-beta.5](https://github.com/RyzeCompany/RyzeMP/releases/tag/v1.0.0-beta.5), con RyzeRTC API 2 y generacion PHP. SHA-256 del PHAR: `c67173111ab59e3b6baf8c1ed51a89d7eabe9c6b3a1578104670f4a8b5938c44`. El Egg obtiene Go de RyzeVanillaGen independientemente de la release de RyzeMP; el canal solo selecciona el PHAR oficial.
 
 Las siguientes actualizaciones solo requieren publicar una release preparada y pulsar **Reinstalar**. Un reinicio normal conserva la versión instalada. Composer no interviene en este proceso.
 
@@ -43,13 +43,13 @@ No cambies los mundos ni borres \`vanillamine-cache/\` para activar el perfil. E
 
 ## Aceleracion nativa Go (worldgen core-v6)
 
-El Egg instala `vanillagen-linux-amd64` **fuera del PHAR** solamente cuando una release oficial de RyzeMP lleva un `ryzemp-update.json` de **schema 2** con el archivo Go, SHA-256, protocolo **7**, algoritmo **4** y etapa `full`. Reinstalar verifica el SHA-256 del manifiesto proporcionado por GitHub, el SHA-256 del Go y el resultado real de `vanillagen -version` **antes** de reemplazar PHP, RyzeRTC o el PHAR. Los esquemas anteriores (schema 1) se siguen aceptando, pero **sin Go**.
+El Egg descarga `vanillagen-linux-amd64` desde **RyzeCompany/RyzeVanillaGen v0.1.0**, nunca desde RyzeMP. Fija el SHA-256 `3cddcb4be9bd17eaa3225be5d167fb63328566c252a8c4fe7b1e3b9e7d716dc7`, ejecuta `-version` y verifica exactamente `vanillagen v0.1.0 protocol 7 algorithm 4` antes de sustituir el servidor. Los manifiestos schema 1 y 2 siguen siendo compatibles; el binario Go se instala aunque RyzeMP aún use generación PHP.
 
 En el arranque, el Egg vuelve a verificar el hash y configura `RYZEMP_VANILLAGEN_BINARY`, `RYZEMP_VANILLAGEN_SHA256` y `RYZEMP_VANILLAGEN_STAGE=full` automaticamente. Usa un puerto local efimero en 127.0.0.1 y **ninguna asignacion TCP/UDP publica adicional**. El nuevo directorio `bin/ryzemp/vanillagen/` se actualiza junto con los otros binarios, admite copia anterior en `bin/ryzemp/backups/previous/` y recupera transacciones interrumpidas. Tambien se pueden recuperar los diarios antiguos.
 
 **El Egg no descarga datos propietarios ni cambia mundos existentes**. Para generar mundos nuevos en `core-v6`, primero prepara un caché Java 26.3 externo e inmutable segun la [guia de RyzeMP](https://github.com/RyzeCompany/RyzeMP/blob/integration/vanillamine-worldgen/docs/WORLDGEN_GO_VPS.md).
 
-La integracion Go sigue en [RyzeMP PR #60](https://github.com/RyzeCompany/RyzeMP/pull/60). Un artefacto de Actions no basta: para instalarlo mediante Reinstalar hace falta una **prerelease oficial** con PHAR, Go y manifiesto schema 2. Hasta publicarla, las reinstalaciones usan la ultima release oficial, sin acelerar Go.
+La integración PHP del generador se desarrolla en [RyzeMP PR #63](https://github.com/RyzeCompany/RyzeMP/pull/63). La instalación del **ejecutable** ya es independiente del PR; para que el PHAR oficial lo aproveche en mundos nuevos, RyzeMP aún necesita publicar una versión compatible tras las pruebas. La beta.5 puede seguir usando el fallback PHP.
 
 ## NetherNet solo con RyzeRTC
 
@@ -70,7 +70,7 @@ No se instalan borradores ni releases sin `ryzemp-update.json`. Si la última re
 
 ## Integridad y versiones compatibles
 
-El manifiesto de cada release declara el SHA-256 del PHAR y la versión, API y SHA-256 exactos de RyzeRTC. El egg usa únicamente las releases de `RyzeCompany/RyzeMP` y `RyzeCompany/RyzeRTC` por HTTPS; también verifica el digest del manifiesto publicado por GitHub. No ejecuta scripts descargados: el instalador completo está dentro del JSON importado.
+El manifiesto de cada release declara el SHA-256 del PHAR y la versión, API y SHA-256 exactos de RyzeRTC. El Egg utiliza únicamente releases de `RyzeCompany/RyzeMP`, `RyzeCompany/RyzeRTC` y `RyzeCompany/RyzeVanillaGen` por HTTPS; también verifica el digest del manifiesto publicado por GitHub. No ejecuta scripts descargados: el instalador completo está dentro del JSON importado.
 
 El host público no necesita credenciales. Actions proporciona su token automático a los contenedores de instalación para evitar el límite de consultas anónimas de las IP compartidas. El actualizador solo lo usa para la API oficial; no lo envía a assets ni redirecciones ni lo guarda en el servidor. Si GitHub limita una consulta del host, la instalación se detiene sin sustituir los componentes actuales.
 
@@ -125,4 +125,4 @@ El [workflow](.github/workflows/validate-ryzertc-egg.yml) comprueba selección d
 
 [Publicación de releases preparadas](https://github.com/RyzeCompany/RyzeMP/blob/main/docs/EGG_UPDATES.md): el workflow de RyzeMP publica PHAR y checksum primero y `ryzemp-update.json` al final. Cada nueva versión debe llevar un tag nuevo.
 
-El operador ya confirmó entrada real al mundo con integración.2. La actualización mediante **Reinstalar** todavía debe repetirse en su panel real. Quedan las pruebas completas de movimiento, interacción, inventario, paquetes de recursos, desconexión/reconexión y coexistencia RakNet. Las PR de esta integración ya están fusionadas a main; la release sigue siendo beta. Sin Amber; HardCoreFactions no se modifica.
+El operador ya confirmó entrada real al mundo con integración.2. La actualización mediante **Reinstalar** todavía debe repetirse en su panel real. Quedan las pruebas completas de movimiento, interacción, inventario, paquetes de recursos, desconexión/reconexión y coexistencia RakNet. RyzeMP PR #63 y Egg PR #3 permanecen como borradores hasta validar clientes reales. La release oficial del servidor sigue siendo beta. Sin Amber; HardCoreFactions no se modifica.
