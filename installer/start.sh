@@ -131,7 +131,7 @@ if ! ./bin/php7/bin/php "${jit_php_args[@]}" -r '
 fi
 # The Vanilla data fetcher is already part of RyzeMP: it prepares the
 # Java worldgen cache automatically when a Vanilla world is created or loaded.
-# Do not call the removed --prepare-vanilla-worldgen CLI or require its old PHP class.
+# Do not execute the removed Vanilla preparation CLI or require its old PHP class.
 # New RyzeMP builds consume RYZEMP_VANILLA_WORLDGEN on startup to provision a
 # separate, safe Vanilla world; older releases (including beta.6) may not.
 case "${RYZEMP_VANILLA_WORLDGEN:-false}" in
