@@ -23,7 +23,7 @@ capacity = shutil.disk_usage(system_tmp).total
 assert capacity <= 100 * 1024 * 1024, 'Run inside a dedicated limited tmpfs, not the host /tmp'
 phar = root / 'RyzeMP.phar'
 digest_before = updater.sha(phar)
-native = root / '.ryzertc-runtime'
+native = root / 'bin/ryzemp/ryzertc'
 php = root / 'bin/php7/bin/php'
 environment = os.environ.copy()
 environment['LD_LIBRARY_PATH'] = str(native / 'lib')
@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='.ci-private-cache.', dir=root) as direc
     shutil.copytree(root / 'bin/php7', stage / 'php7', symlinks=True)
     shutil.copytree(native, stage / 'runtime', symlinks=True)
     shutil.copyfile(phar, stage / 'RyzeMP.phar')
-    rtc = json.loads((root / '.ryzemp-install.json').read_text())['ryzertc']
+    rtc = json.loads((root / 'bin/ryzemp/install.json').read_text())['ryzertc']
     previous_environment = os.environ.get('TMPDIR')
     os.environ['TMPDIR'] = str(system_tmp)
     try:
