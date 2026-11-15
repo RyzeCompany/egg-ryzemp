@@ -38,11 +38,10 @@ fi
 # El Egg configura Go exclusivamente desde el binario aprobado de su
 # release. No heredar valores manuales que apunten a otra version.
 unset RYZEMP_VANILLAGEN_BINARY RYZEMP_VANILLAGEN_SHA256 RYZEMP_VANILLAGEN_STAGE RYZEMP_NETHERNET_BINARY
-# A schema-2 release requires its native executable. Do not silently run
-# an unaccelerated world because the native directory was lost.
-if [[ -s bin/ryzemp/install.json ]] && grep -Eq '^[[:space:]]*"vanillagen"[[:space:]]*:[[:space:]]*\{' bin/ryzemp/install.json && \
-    [[ ! -x bin/ryzemp/vanillagen/vanillagen-linux-amd64 ]]; then
-  echo '[RyzeMP] Esta release declara Go pero falta su ejecutable externo. Reinstala el Egg.' >&2
+# The Egg pins RyzeVanillaGen independently from the RyzeMP PHAR release.
+# Missing Go is a failed installation, not a reason to silently leave an empty directory.
+if [[ ! -d bin/ryzemp/vanillagen || ! -f bin/ryzemp/vanillagen/vanillagen-linux-amd64 ]]; then
+  echo '[RyzeMP] Falta RyzeVanillaGen v0.1.0. Reinstala el Egg para descargar su release oficial.' >&2
   exit 1
 fi
 if [[ -d bin/ryzemp/vanillagen ]]; then
@@ -67,7 +66,8 @@ if [[ -d bin/ryzemp/vanillagen ]]; then
     export RYZEMP_VANILLAGEN_STAGE=full
     echo '[RyzeMP] Go nativo verificado (terrain, materiales y carvers); respaldo PHP disponible.'
   else
-    echo '[RyzeMP] La release actual usa generacion PHP; Go no es necesario.'
+    echo '[RyzeMP] Falta el ejecutable RyzeVanillaGen; ejecuta Reinstalar.' >&2
+    exit 1
   fi
 fi
 
