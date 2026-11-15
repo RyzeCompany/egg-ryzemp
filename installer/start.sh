@@ -37,7 +37,7 @@ fi
 
 # El Egg configura Go exclusivamente desde el binario aprobado de su
 # release. No heredar valores manuales que apunten a otra version.
-unset RYZEMP_VANILLAGEN_BINARY RYZEMP_VANILLAGEN_SHA256 RYZEMP_VANILLAGEN_STAGE
+unset RYZEMP_VANILLAGEN_BINARY RYZEMP_VANILLAGEN_SHA256 RYZEMP_VANILLAGEN_STAGE RYZEMP_NETHERNET_BINARY
 # A schema-2 release requires its native executable. Do not silently run
 # an unaccelerated world because the native directory was lost.
 if [[ -s bin/ryzemp/install.json ]] && grep -Eq '^[[:space:]]*"vanillagen"[[:space:]]*:[[:space:]]*\{' bin/ryzemp/install.json && \
@@ -78,13 +78,8 @@ if [[ ! -s ./bin/ryzemp/ryzertc/ryzertc.so || ! -s ./bin/ryzemp/ryzertc/lib/libd
 fi
 export LD_LIBRARY_PATH="/home/container/bin/ryzemp/ryzertc/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-# Every distributed helper is outside the PHAR and verified on every start.
-if [[ ! -x bin/ryzemp/nethernet/pm-nethernet-linux-amd64 || ! -s bin/ryzemp/nethernet/SHA256SUMS ]] ||
-   ! (cd bin/ryzemp/nethernet && sha256sum -c --status SHA256SUMS); then
-  echo '[RyzeMP] El ejecutable externo pm-nethernet falta o tiene un SHA-256 invalido. Reinstala el Egg.' >&2
-  exit 1
-fi
-export RYZEMP_NETHERNET_BINARY=/home/container/bin/ryzemp/nethernet/pm-nethernet-linux-amd64
+# The Egg loads only the official verified RyzeRTC extension for NetherNet.
+# No external pm-nethernet process, no duplicate UDP listener or public port.
 # El mismo php.ini sera utilizado por los procesos hijos, incluido ConsoleReader.
 export PHPRC=/home/container/bin/php7/bin
 mkdir -p ./tmp
