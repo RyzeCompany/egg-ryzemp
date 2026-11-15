@@ -38,11 +38,8 @@ TARGETS = ('start-ryzemp.sh', 'bin/php7', 'bin/ryzemp/ryzertc', 'RyzeMP.phar',
 BACKUPS = ('start-ryzemp.sh', 'php7', 'ryzertc', 'RyzeMP.phar',
            'vanillagen', 'nethernet', 'install.json')
 GO_FILENAME = 'vanillagen-linux-amd64'
-BRIDGE_FILENAME = 'pm-nethernet-linux-amd64'
-BRIDGE_URL = ('https://gitlab.com/api/v4/projects/VanillaPocketMine%2Fnethernet/packages/'
-              'generic/pm-nethernet/0.1.2/' + BRIDGE_FILENAME)
-# Pinned upstream 0.1.2 checksummed by the RyzeMP native-build CI.
-BRIDGE_SHA256 = 'f79145ddb1c9a94258b59b539f71ceb79575c8d79a2726a2aa6418196c01a106'
+# bin/ryzemp/nethernet remains in TARGETS solely to remove obsolete bridges
+# transactionally and retain them in the rollback backup. Never download one.
 GO_PROTOCOL = 7
 GO_ALGORITHM = 4
 
@@ -84,7 +81,7 @@ def asset_url(repo, tag, name):
 
 def download(url, destination, limit):
     require(url.startswith(('https://api.github.com/repos/RyzeCompany/',
-                            'https://github.com/RyzeCompany/')) or url == BRIDGE_URL,
+                            'https://github.com/RyzeCompany/')),
             'Origen de descarga no permitido.')
     request = urllib.request.Request(url, headers={
         'User-Agent': 'RyzeMP-Pterodactyl-Updater/1', 'Accept': 'application/vnd.github+json'
@@ -497,15 +494,8 @@ def update(root, php_dir, startup, channel):
                 validate_go_binary(binary)
                 (go_dir / 'SHA256SUMS').write_text(go['sha256'] + '  ' + GO_FILENAME + '\n')
                 (go_dir / 'SHA256SUMS').chmod(0o600)
-            bridge_dir = stage / 'nethernet'
-            bridge_dir.mkdir(mode=0o700)
-            bridge = bridge_dir / BRIDGE_FILENAME
-            download(BRIDGE_URL, bridge, 64 * 1024 * 1024)
-            require(sha(bridge) == BRIDGE_SHA256,
-                    'SHA-256 del puente NetherNet incorrecto; se conserva la instalacion.')
-            bridge.chmod(0o700)
-            (bridge_dir / 'SHA256SUMS').write_text(BRIDGE_SHA256 + '  ' + BRIDGE_FILENAME + '\n')
-            (bridge_dir / 'SHA256SUMS').chmod(0o600)
+            # Native RyzeRTC is the sole NetherNet transport. On upgrade any
+            # existing Go bridge is moved into the previous-version backup.
             start = stage / 'start-ryzemp.sh'
             shutil.copyfile(startup, start)
             start.chmod(0o755)
@@ -516,7 +506,7 @@ def update(root, php_dir, startup, channel):
             state['vanillagen'] = go
             state_file = stage / 'state.json'
             write_json(state_file, state)
-            changed = commit(root, (start, php, runtime, phar, go_dir, bridge_dir, state_file))
+            changed = commit(root, (start, php, runtime, phar, go_dir, None, state_file))
             migrate_legacy_layout(root)
             if changed:
                 print('[RyzeMP] Actualizacion verificada. Copia anterior: bin/ryzemp/backups/previous/', flush=True)
