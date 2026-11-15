@@ -18,6 +18,10 @@ import zipfile
 
 MP = 'RyzeCompany/RyzeMP'
 RTC = 'RyzeCompany/RyzeRTC'
+GO_REPO = 'RyzeCompany/RyzeVanillaGen'
+GO_TAG = 'v0.1.0'
+# First independent release: immutable checksum from GitHub's published asset.
+GO_SHA256 = '3cddcb4be9bd17eaa3225be5d167fb63328566c252a8c4fe7b1e3b9e7d716dc7'
 MANIFEST = 'ryzemp-update.json'
 PLATFORM = {'os': 'linux', 'arch': 'x86_64', 'php': '8.4', 'php_api': 20240924, 'zts': True}
 # Install the guarded launcher first, including when upgrading from an older egg.
@@ -171,10 +175,8 @@ def select_release(channel, directory):
                 and type(go.get('algorithm')) is int and go['algorithm'] == GO_ALGORITHM
                 and go.get('stage') == 'full',
                 'La version del protocolo/algoritmo Go no coincide con RyzeMP.')
-        go_assets = [a for a in release['assets'] if a.get('name') == go['asset']
-                     and a.get('state') == 'uploaded']
-        require(len(go_assets) == 1 and go_assets[0].get('digest') == 'sha256:' + go['sha256'],
-                'Ejecutable Go ausente, incompleto o con SHA-256 distinto en GitHub.')
+        # Legacy schema-2 Go metadata is accepted and checked for compatibility,
+        # but the binary itself comes ONLY from RyzeVanillaGen's independent release.
     return manifest, {'channel': channel, 'release': release['tag_name'],
         'published_at': release['published_at'], 'release_id': release['id'], 'manifest_sha256': expected[7:]}
 
@@ -310,8 +312,7 @@ def validate_go_binary(path):
     except (OSError, subprocess.TimeoutExpired) as error:
         raise UpdateError(f'vanillagen no pudo verificarse: {error}.') from error
     require(result.returncode == 0 and
-            re.fullmatch(r'vanillagen [A-Za-z0-9.+_-]+ protocol 7 algorithm 4\s*',
-                         result.stdout) is not None,
+            result.stdout.strip() == f'vanillagen {GO_TAG} protocol {GO_PROTOCOL} algorithm {GO_ALGORITHM}',
             'Version del ejecutable Go incompatible; se conserva la instalacion anterior.')
 
 
@@ -467,8 +468,8 @@ def update(root, php_dir, startup, channel):
                     if installed.get('release') == state['release']:
                         require(installed['manifest_sha256'] == state['manifest_sha256'],
                                 'La release instalada fue modificada; publica una nueva release.')
-            print(f"[RyzeMP] Canal {channel}: {state['release']} + RyzeRTC {manifest['ryzertc']['tag']}" +
-                  (" + vanillagen Go" if manifest.get('vanillagen') else " (worldgen PHP)"), flush=True)
+            print(f"[RyzeMP] Canal {channel}: {state['release']} + RyzeRTC {manifest['ryzertc']['tag']}"
+                  f" + RyzeVanillaGen {GO_TAG} (release independiente)", flush=True)
             phar, rtc = stage / 'RyzeMP.phar', stage / 'runtime.zip'
             download(asset_url(MP, state['release'], manifest['phar']['asset']), phar, 100 * 1024 * 1024)
             require(sha(phar) == manifest['phar']['sha256'], 'SHA-256 del PHAR incorrecto; se conserva la instalacion.')
@@ -482,18 +483,22 @@ def update(root, php_dir, startup, channel):
             require_space(stage, php_bytes + 8 * 1024 * 1024, 'preparar PHP')
             shutil.copytree(php_dir, php, symlinks=True)
             validate(php, phar, runtime, native)
-            # Do not create an empty vanillagen directory for schema-1 releases.
-            go = manifest.get('vanillagen')
-            go_dir = stage / 'vanillagen' if go is not None else None
-            if go_dir is not None:
-                go_dir.mkdir(mode=0o700)
-                binary = go_dir / GO_FILENAME
-                download(asset_url(MP, state['release'], go['asset']), binary, 64 * 1024 * 1024)
-                require(sha(binary) == go['sha256'], 'SHA-256 del ejecutable Go incorrecto; se conserva la instalacion.')
-                binary.chmod(0o700)
-                validate_go_binary(binary)
-                (go_dir / 'SHA256SUMS').write_text(go['sha256'] + '  ' + GO_FILENAME + '\n')
-                (go_dir / 'SHA256SUMS').chmod(0o600)
+            # Always provision Go independently of the PHAR release manifest.
+            # Even schema-1 RyzeMP releases receive the verified native binary;
+            # older PHARs can simply ignore the environment variable.
+            go = {'repo': GO_REPO, 'tag': GO_TAG, 'asset': GO_FILENAME,
+                  'sha256': GO_SHA256, 'protocol': GO_PROTOCOL,
+                  'algorithm': GO_ALGORITHM, 'stage': 'full'}
+            go_dir = stage / 'vanillagen'
+            go_dir.mkdir(mode=0o700)
+            binary = go_dir / GO_FILENAME
+            download(asset_url(GO_REPO, GO_TAG, GO_FILENAME), binary, 64 * 1024 * 1024)
+            require(sha(binary) == GO_SHA256,
+                    'SHA-256 de la release oficial RyzeVanillaGen incorrecto; se conserva la instalacion.')
+            binary.chmod(0o700)
+            validate_go_binary(binary)
+            (go_dir / 'SHA256SUMS').write_text(GO_SHA256 + '  ' + GO_FILENAME + '\n')
+            (go_dir / 'SHA256SUMS').chmod(0o600)
             # Native RyzeRTC is the sole NetherNet transport. On upgrade any
             # existing Go bridge is moved into the previous-version backup.
             start = stage / 'start-ryzemp.sh'
@@ -510,8 +515,7 @@ def update(root, php_dir, startup, channel):
             migrate_legacy_layout(root)
             if changed:
                 print('[RyzeMP] Actualizacion verificada. Copia anterior: bin/ryzemp/backups/previous/', flush=True)
-            if go is None:
-                print('[RyzeMP] Esta release no publica vanillagen. No se crea una carpeta Go vacia.', flush=True)
+            print(f'[RyzeMP] RyzeVanillaGen {GO_TAG} instalado externamente y verificado; no depende de un PR.', flush=True)
             return state
 
 
