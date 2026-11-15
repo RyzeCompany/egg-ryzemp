@@ -45,11 +45,6 @@ class UpdaterTests(unittest.TestCase):
         self.start = self.base / 'start.sh'
         self.start.write_text('#!/bin/bash\nnew-start\n')
         self.downloads = {}
-        self.bridge_bytes = b'upstream-mock-nethernet'
-        self.downloads[updater.BRIDGE_URL] = self.bridge_bytes
-        pinned = mock.patch.object(updater, 'BRIDGE_SHA256', checksum(self.bridge_bytes))
-        pinned.start()
-        self.addCleanup(pinned.stop)
         self.releases = []
         self.release('old', 10)
         self.release('new', 20)
@@ -134,7 +129,8 @@ class UpdaterTests(unittest.TestCase):
         self.assertFalse((self.root / 'bin/ryzemp/vanillagen').exists(),
                          'Schema-1 releases must not leave an empty Go directory')
         self.assertFalse((self.root / '.ryzertc-runtime').exists())
-        self.assertEqual((self.root / 'bin/ryzemp/nethernet' / updater.BRIDGE_FILENAME).read_bytes(), self.bridge_bytes)
+        self.assertFalse((self.root / 'bin/ryzemp/nethernet').exists(),
+                         'pm-nethernet must not be installed in the RyzeRTC-only Egg')
         self.validate.assert_called_once()
 
 
@@ -154,12 +150,17 @@ class UpdaterTests(unittest.TestCase):
         self.assertFalse(old.exists())
         self.assertEqual((self.root / 'bin/ryzemp/legacy/vanillagen/user-copy.txt').read_text(), 'keep-this')
 
-    def test_external_bridge_corruption_keeps_originals(self):
-        self.downloads[updater.BRIDGE_URL] = b'corrupt-bridge'
-        before = self.snapshot()
-        with self.assertRaisesRegex(updater.UpdateError, 'SHA-256 del puente NetherNet'):
-            self.install()
-        self.assertEqual(self.snapshot(), before)
+    def test_retire_old_bridge_transactionally_without_losing_data(self):
+        old = self.root / 'bin/ryzemp/nethernet'
+        old.mkdir(parents=True)
+        (old / 'pm-nethernet-linux-amd64').write_bytes(b'old-bridge')
+        before_world = (self.root / 'worlds/world/level.dat').read_bytes()
+        self.install()
+        self.assertFalse(old.exists(), 'obsolete NetherNet bridge must not remain installed')
+        self.assertEqual((self.root / 'bin/ryzemp/backups/previous/nethernet/pm-nethernet-linux-amd64').read_bytes(),
+                         b'old-bridge')
+        self.assertEqual((self.root / 'worlds/world/level.dat').read_bytes(), before_world)
+
 
     def test_schema2_installs_verified_go_outside_phar_preserving_player_data(self):
         self.release('go', 29, schema=2)
