@@ -2,7 +2,7 @@
 set -euo pipefail
 cd /home/container
 
-if [[ -d .ryzemp-update-transaction ]]; then
+if [[ -d bin/ryzemp/update-transaction || -d .ryzemp-update-transaction ]]; then
   echo '[RyzeMP] La actualizacion fue interrumpida. Reinstala para recuperar la instalacion anterior.' >&2
   exit 1
 fi
@@ -35,12 +35,51 @@ if ! grep -Fxq "extension_dir=\"$ext_dir\"" "$php_ini"; then
   printf '\nextension_dir="%s"\n' "$ext_dir" >> "$php_ini"
 fi
 
+# El Egg configura Go exclusivamente desde el binario aprobado de su
+# release. No heredar valores manuales que apunten a otra version.
+unset RYZEMP_VANILLAGEN_BINARY RYZEMP_VANILLAGEN_SHA256 RYZEMP_VANILLAGEN_STAGE RYZEMP_NETHERNET_BINARY
+# The Egg pins RyzeVanillaGen independently from the RyzeMP PHAR release.
+# Missing Go is a failed installation, not a reason to silently leave an empty directory.
+if [[ ! -d bin/ryzemp/vanillagen || ! -f bin/ryzemp/vanillagen/vanillagen-linux-amd64 ]]; then
+  echo '[RyzeMP] Falta RyzeVanillaGen v0.1.0. Reinstala el Egg para descargar su release oficial.' >&2
+  exit 1
+fi
+if [[ -d bin/ryzemp/vanillagen ]]; then
+  if [[ -f bin/ryzemp/vanillagen/vanillagen-linux-amd64 && ! -L bin/ryzemp/vanillagen/vanillagen-linux-amd64 &&
+        ! -x bin/ryzemp/vanillagen/vanillagen-linux-amd64 && -s bin/ryzemp/vanillagen/SHA256SUMS ]]; then
+    # Files/SFTP uploads sometimes drop the executable bit. Verify before chmod.
+    if (cd bin/ryzemp/vanillagen && sha256sum -c --status SHA256SUMS); then
+      chmod 700 bin/ryzemp/vanillagen/vanillagen-linux-amd64
+    fi
+  fi
+  if [[ -e bin/ryzemp/vanillagen/vanillagen-linux-amd64 ]]; then
+    if [[ ! -x bin/ryzemp/vanillagen/vanillagen-linux-amd64 || ! -s bin/ryzemp/vanillagen/SHA256SUMS ]]; then
+      echo '[RyzeMP] vanillagen incompleto o sin permisos. Reinstala el Egg.' >&2
+      exit 1
+    fi
+    if ! (cd bin/ryzemp/vanillagen && sha256sum -c --status SHA256SUMS); then
+      echo '[RyzeMP] vanillagen no paso la verificacion SHA-256. Reinstala el Egg.' >&2
+      exit 1
+    fi
+    export RYZEMP_VANILLAGEN_BINARY=/home/container/bin/ryzemp/vanillagen/vanillagen-linux-amd64
+    export RYZEMP_VANILLAGEN_SHA256="$(sha256sum "$RYZEMP_VANILLAGEN_BINARY" | cut -d ' ' -f1)"
+    export RYZEMP_VANILLAGEN_STAGE=full
+    echo '[RyzeMP] Go nativo verificado (terrain, materiales y carvers); respaldo PHP disponible.'
+  else
+    echo '[RyzeMP] Falta el ejecutable RyzeVanillaGen; ejecuta Reinstalar.' >&2
+    exit 1
+  fi
+fi
+
 # Cargar la biblioteca nativa desde su directorio separado del PHAR.
-if [[ ! -s ./.ryzertc-runtime/ryzertc.so || ! -s ./.ryzertc-runtime/lib/libdatachannel.so.0.24 ]]; then
+if [[ ! -s ./bin/ryzemp/ryzertc/ryzertc.so || ! -s ./bin/ryzemp/ryzertc/lib/libdatachannel.so.0.24 ]]; then
   echo '[RyzeMP] Falta RyzeRTC. Reinstala el Egg para descargar la release oficial.' >&2
   exit 1
 fi
-export LD_LIBRARY_PATH="/home/container/.ryzertc-runtime/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="/home/container/bin/ryzemp/ryzertc/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# The Egg loads only the official verified RyzeRTC extension for NetherNet.
+# No external pm-nethernet process, no duplicate UDP listener or public port.
 # El mismo php.ini sera utilizado por los procesos hijos, incluido ConsoleReader.
 export PHPRC=/home/container/bin/php7/bin
 mkdir -p ./tmp
@@ -63,5 +102,25 @@ if ! ./bin/php7/bin/php -r '
   echo '[RyzeMP] Arranque detenido: RyzeRTC no esta disponible.' >&2
   exit 1
 fi
+# Opt-in bootstraps the data locally and prepares a NEW world before starting RyzeMP.
+# Never silently create a PocketMine world when the vanilla PHP CLI is absent.
+if [[ "$(printenv RYZEMP_VANILLA_WORLDGEN || true)" == "true" ]]; then
+  if ! ./bin/php7/bin/php -r '
+    try {
+      $phar = new Phar("RyzeMP.phar");
+      if (!isset($phar["src/world/generator/vanilla/VanillaWorldgenSetup.php"])) exit(1);
+    } catch (Throwable $e) { exit(1); }
+  '; then
+    echo '[RyzeMP] Este PHAR no incluye la preparacion automatica Vanilla. Instala el PHAR actualizado del PR #60.' >&2
+    exit 1
+  fi
+  if ! command -v tar >/dev/null 2>&1; then
+    echo '[RyzeMP] Falta tar en el contenedor; se necesita para preparar Java 26.3.' >&2
+    exit 1
+  fi
+  echo '[RyzeMP] Preparando/verificando datos Java 26.3. No se necesita HASH_REAL ni consola Linux.'
+  ./bin/php7/bin/php -d memory_limit=2G -d "sys_temp_dir=$TMPDIR" ./RyzeMP.phar --prepare-vanilla-worldgen
+fi
+
 echo '[RyzeMP] Red: publica TCP y UDP en la misma asignacion server-port. El Egg no abre el firewall de Wings.'
 exec ./bin/php7/bin/php -d "sys_temp_dir=$TMPDIR" ./RyzeMP.phar --no-wizard --enable-ansi --settings.enable-dev-builds=1
