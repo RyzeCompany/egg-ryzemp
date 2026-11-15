@@ -2,6 +2,16 @@
 
 **Reinstalar actualiza RyzeMP desde las releases oficiales**, verifica los archivos y conserva mundos, plugins, configuración y la identidad NetherNet. PHP y RyzeRTC se preparan antes de sustituir la instalación. El módulo nativo y sus bibliotecas permanecen fuera de `RyzeMP.phar`.
 
+## Instalacion limpia: una sola carpeta de componentes
+
+El nuevo Egg mantiene `RyzeMP.phar` y `start-ryzemp.sh` en la raiz, pero agrupa los componentes internos en `bin/ryzemp/`: `ryzertc/`, `nethernet/`, `vanillagen/` (solo en releases con Go), `backups/previous/` y `install.json`. PHP sigue en `bin/php7/`; la clave de confianza `nethernet/operator-key.pem` no se mueve.
+
+La nueva instalacion verifica y descarga `pm-nethernet` oficial 0.1.2 fuera del PHAR, ademas de RyzeRTC. `vanillagen` solo se instala desde una release preparada con manifiesto schema 2. **La ultima prerelease beta.5 tiene schema 1, por lo que no incluye Go**: el Egg deja de crear una carpeta de Go vacia y muestra el motivo en la instalacion. No se puede generar Go a partir de un PHAR antiguo: se necesita una release Go verificada.
+
+Tras una instalacion correcta, el Egg traslada los antiguos directorios ocultos `.ryzertc-runtime`, `.ryzemp-vanillagen`, `.ryzemp-backups` y el viejo registro hacia `bin/ryzemp/legacy/` para conservar su contenido sin saturar la raiz. Las carpetas antiguas vacias se eliminan; si hubiera una copia anterior con el mismo nombre, se conserva sin sobrescribir. **No elimina mundos, plugins, archivos de usuario ni las claves de identidad.** No borres manualmente `bin/ryzemp/legacy/` sin revisar sus respaldos.
+
+La compilacion del PR #63 de RyzeMP ya deja los ejecutables Go y pm-nethernet fuera del PHAR. Instalar esa nueva version mediante el Egg necesita una **release oficial con manifiesto y assets SHA-256**, no un ZIP temporal de GitHub Actions.
+
 ## Actualizar el egg del panel una vez
 
 1. Descarga [egg-ryze-m-p.json](https://raw.githubusercontent.com/RyzeCompany/egg-ryzemp/main/egg-ryze-m-p.json).
@@ -35,7 +45,7 @@ No cambies los mundos ni borres \`vanillamine-cache/\` para activar el perfil. E
 
 El Egg instala `vanillagen-linux-amd64` **fuera del PHAR** solamente cuando una release oficial de RyzeMP lleva un `ryzemp-update.json` de **schema 2** con el archivo Go, SHA-256, protocolo **7**, algoritmo **4** y etapa `full`. Reinstalar verifica el SHA-256 del manifiesto proporcionado por GitHub, el SHA-256 del Go y el resultado real de `vanillagen -version` **antes** de reemplazar PHP, RyzeRTC o el PHAR. Los esquemas anteriores (schema 1) se siguen aceptando, pero **sin Go**.
 
-En el arranque, el Egg vuelve a verificar el hash y configura `RYZEMP_VANILLAGEN_BINARY`, `RYZEMP_VANILLAGEN_SHA256` y `RYZEMP_VANILLAGEN_STAGE=full` automaticamente. Usa un puerto local efimero en 127.0.0.1 y **ninguna asignacion TCP/UDP publica adicional**. El nuevo directorio `.ryzemp-vanillagen/` se actualiza junto con los otros binarios, admite copia anterior en `.ryzemp-backups/previous/` y recupera transacciones interrumpidas. Tambien se pueden recuperar los diarios antiguos.
+En el arranque, el Egg vuelve a verificar el hash y configura `RYZEMP_VANILLAGEN_BINARY`, `RYZEMP_VANILLAGEN_SHA256` y `RYZEMP_VANILLAGEN_STAGE=full` automaticamente. Usa un puerto local efimero en 127.0.0.1 y **ninguna asignacion TCP/UDP publica adicional**. El nuevo directorio `bin/ryzemp/vanillagen/` se actualiza junto con los otros binarios, admite copia anterior en `bin/ryzemp/backups/previous/` y recupera transacciones interrumpidas. Tambien se pueden recuperar los diarios antiguos.
 
 **El Egg no descarga datos propietarios ni cambia mundos existentes**. Para generar mundos nuevos en `core-v6`, primero prepara un caché Java 26.3 externo e inmutable segun la [guia de RyzeMP](https://github.com/RyzeCompany/RyzeMP/blob/integration/vanillamine-worldgen/docs/WORLDGEN_GO_VPS.md).
 
@@ -79,7 +89,7 @@ Si la reinstalación anterior terminó con `Phar::convertToData(): No space left
 
 ## Copia anterior y recuperación
 
-La instalación guarda PHP, RyzeRTC, PHAR, lanzador y registro de versión anteriores en `.ryzemp-backups/previous/` con los nombres `php7`, `ryzertc-runtime`, `RyzeMP.phar`, `start-ryzemp.sh` e `install.json`. Una reinstalación idéntica conserva esa copia útil. Este respaldo cubre los componentes del software; los datos del servidor permanecen en su sitio.
+La instalación guarda PHP, RyzeRTC, PHAR, lanzador y registro de versión anteriores en `bin/ryzemp/backups/previous/` con los nombres `php7`, `ryzertc-runtime`, `RyzeMP.phar`, `start-ryzemp.sh` e `install.json`. Una reinstalación idéntica conserva esa copia útil. Este respaldo cubre los componentes del software; los datos del servidor permanecen en su sitio.
 
 Un error al sustituir un componente restaura el conjunto anterior. Si el proceso se interrumpe, `start-ryzemp.sh` impide arrancar una instalación incompleta y la siguiente reinstalación recupera el diario `.ryzemp-update-transaction`. No borres ese directorio mientras haya una recuperación pendiente.
 
